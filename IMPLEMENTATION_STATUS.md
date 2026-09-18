@@ -2,7 +2,7 @@
 
 **Milestone:** v0.2 survival loop in progress, built on the first playable foundation. Original GDD preserved unchanged.
 
-**Patch:** v0.2.1 PWA update delivery fix in progress; no gameplay scope added.
+**Patch:** v0.2.1 PWA update delivery fix complete; no gameplay scope added.
 
 ## Completed
 

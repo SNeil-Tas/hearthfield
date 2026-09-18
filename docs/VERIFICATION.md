@@ -89,6 +89,8 @@ The stale-client cause was a waiting replacement worker combined with the previo
 
 The browser suite now checks the production build identifier and manual update-check control. The remaining physical-device check is to install an older build, deploy a later build, accept Reload, confirm the identifier changes, and verify the colony remains present and offline launch still works.
 
+The deployed v0.2.1 smoke test reported `Hearthfield v0.2.1 · Build 7f8788a3850b`, HTTP 200 for the root, manifest, and service worker, three rendered colonists, the new worker cache `hearthfield-7f8788a3850b`, and no page errors or failed requests.
+
 ## v0.2 release deployment addendum
 
 Pages run [35311555660](https://github.com/SNeil-Tas/hearthfield/actions/runs/35311555660) deployed the v0.2 build successfully. A live Playwright smoke test returned HTTP 200, rendered three colonists, loaded the manifest and service worker with HTTP 200, detected relative hashed assets, and reported no page errors or failed requests.
