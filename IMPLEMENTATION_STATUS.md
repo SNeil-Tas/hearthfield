@@ -82,3 +82,7 @@ No reproducible core-loop blocker remained in the exercised scenarios. This is a
 4. Add one bounded hostile event and defensive behavior with a coherent incapacitation/recovery model. Extend job interruption and reservations without direct normal-work pawn control.
 5. Improve logistics indexing, stack consolidation and path connectivity only after large-plan/device measurements; add regression tests around new ownership transitions.
 6. Add named save slots and explicit schema migration tests before the next incompatible data revision; validate Safari separately.
+
+## v0.2 release deployment
+
+The v0.2 survival-loop commit is live at [sneil-tas.github.io/hearthfield](https://sneil-tas.github.io/hearthfield/). Pages run [35311555660](https://github.com/SNeil-Tas/hearthfield/actions/runs/35311555660) passed build and deploy, and the live smoke test returned HTTP 200 with three colonists, manifest/service-worker HTTP 200, relative hashed assets, and no page errors or failed requests.
