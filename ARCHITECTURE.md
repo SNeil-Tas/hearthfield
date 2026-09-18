@@ -1,0 +1,87 @@
+# Architecture
+
+## Ownership and data flow
+
+```text
+Pointer / DOM UI → typed Command → Simulation → plain World state → Canvas + DOM UI
+                                      ↕
+                              versioned save codec
+                                      ↕
+                            IndexedDB / JSON export
+```
+
+Simulation modules have no browser, renderer or DOM dependencies. Rendering reads the world and never changes gameplay state. UI state, camera, time multiplier and renderer smoothing are ephemeral. The only production dependencies are browser APIs; npm packages are development/build/test tools.
+
+| Boundary | Location | Responsibility |
+|---|---|---|
+| Bootstrap | `src/main.ts` | Compose services, dispatch actions, frame loop, lifecycle and persistence |
+| World / entities | `src/sim/types.ts`, `world.ts`, `generate.ts` | Plain state, identity, coordinates, physical stacks, seeded generation |
+| Content | `src/sim/definitions.ts` | Terrain, buildings, resource nodes, costs, yields, work and labels |
+| Commands | `src/sim/commands.ts` | Validate player intent; cancel safely; never grant instant resources |
+| Clock | `src/sim/clock.ts` | Fixed 100 ms ticks; 0/1/2/4× independent of render rate |
+| Work discovery | `src/sim/job-board.ts` | Shared work opportunities and urgent personal needs |
+| Assignment | `src/sim/job-assignment.ts` | Priorities, skills, distance, reachability and atomic claims |
+| Execution | `src/sim/jobs.ts` | Travel, carrying, harvest/work progress, delivery, consumption, completion |
+| Needs | `src/sim/needs.ts` | Hunger, rest, health effects, derived mood and interruption |
+| Reservations | `src/sim/reservations.ts` | Atomic multi-key claims and owner-wide release |
+| Navigation | `src/sim/pathfinding.ts` | Four-way A*, binary heap, isolated walkability grid |
+| Events | `src/sim/events.ts` | Bounded simulation event journal |
+| Camera / render | `src/view/` | Screen/world conversion, zoom, culling, original shapes, visual smoothing |
+| Touch | `src/input/gestures.ts` | Pointer tracking, thresholded taps, pan, pinch, area/line previews |
+| UI / selection | `src/ui/` | HUD, context, work priorities, panels, tool and selection state |
+| Saves | `src/persistence/` | Validation, codec, database, recovery and browser writer lock |
+
+## Time and execution
+
+The simulation advances at **10 Hz**. Movement updates each tick; needs and work-board rebuilding run at **1 Hz**. Idle pawns scan on staggered one-second schedules, with at most 24 candidate path attempts per assignment. Failed routes receive a ten-second retry cooldown, cleared after player commands. Work changes dirty the shared board; it is never rebuilt at rendering frequency.
+
+The frame accumulator caps elapsed time at 250 ms to avoid catch-up spirals. At 4× this is at most ten ticks per render. Long stalls therefore slow simulated time rather than triggering an unbounded catch-up. Hidden documents do not advance simulation. Renderer-only exponential smoothing makes 10 Hz pawn movement visually continuous; it never determines positions, arrival or work completion.
+
+Generation uses an explicit seed and a small deterministic PRNG. Subsequent simulation ticks do not call wall-clock time or random functions. The same initial world and tick-ordered commands yield the same state. `savedAt` is persistence metadata, not a simulation input.
+
+## Work and physical logistics
+
+Priorities range from 1–4; zero disables a work type. The score combines priority, Manhattan distance, skill and delivery distance. Eating, exhaustion and emergency foraging are higher than normal work, regardless of disabled work preferences. Skills currently affect gathering/build speed and candidate rank; they do not improve through use.
+
+A job has a kind, reserved keys, source/target IDs, destination, cached path, phase and progress. The lifecycle is:
+
+1. Generate available work from designations, blueprints and loose items.
+2. Filter/rank candidates by pawn preferences, needs, cooldown and existing reservations.
+3. Find both pickup and delivery routes before reserving a logistics job.
+4. Atomically reserve the source and destination/task.
+5. Walk the cached route; pick up at most twelve units; walk to the destination.
+6. Work, deposit or consume; then release all ownership keys.
+
+The source stack, construction task, bed, and haul destination cell use exclusive keys. Multiple colonists cannot consume the same stack, work the same blueprint or occupy the same bed concurrently. Pawns themselves do not block movement: they can pass one another, avoiding a premature crowd/traffic simulation.
+
+Cancellation and urgent needs drop carried resources before clearing the job and reservations. Blueprint cancellation also refunds delivered wood. Harvest and construction progress belong to world objects, so interruption does not erase completed work. Build completion converts delivered wood into a building, after which that wood is no longer loose inventory. A wall cannot finish over a colonist; idle occupants autonomously step aside. Doors and beds are passable.
+
+Stacks stay separate when dropped so active stack IDs/reservations remain stable. Storage cells accept all three resources and permit a bounded load (a cell with fewer than 48 units may receive up to twelve more). There are no stockpile filters, merging policies or dedicated inventory containers yet.
+
+## Navigation and scope of optimization
+
+The 80×80 navigation grid marks deep water, trees, stone outcrops and completed walls impassable. Berry bushes, doors and beds are traversable. Blueprints do not block until built. Jobs needing access to a tree or building path to an adjacent tile; food, stockpile delivery and beds path onto the tile.
+
+A* uses Manhattan distance and a binary heap. Paths are retained for the job, and the next tile is revalidated as the pawn moves. A blocked route aborts safely and returns to normal job selection. The grid refreshes on world topology changes and at the slow system rate.
+
+The current board rebuild is linear over world objects, with delivery/stockpile candidate cross-products. It is adequate for the measured first slice, not a claim of unlimited scaling. Large blueprint fields, fragmented stacks and frequent unreachable routes are the likely next pressure points. Add spatial buckets, connectivity labels and dirty indices when measured workloads justify them; keep the pathfinder API isolated.
+
+## Rendering and mobile interaction
+
+Canvas 2D was chosen for small moving populations, a simple original shape vocabulary, and zero runtime dependency. It culls to the visible tile/entity bounds and caps backing resolution at device pixel ratio 2. It requires no image decoding, network art, sprite atlas or WebGL context recovery. Reconsider Pixi/WebGL if device profiles show fill/object costs or visual requirements exceed Canvas.
+
+Normal play uses tap-to-select and one-finger pan after a seven-pixel drag threshold. Tool mode maps a one-finger drag to an area designation, an axis-aligned wall line, or single placement. Two fingers always pan/zoom, including during tools; adding a second pointer cancels the one-finger preview. Pointer cancellation does not commit a command. `touch-action: none` and overscroll suppression isolate map gestures from the browser.
+
+DOM panels use safe-area insets and 44 px action targets. Work/settings/journal temporarily occupy most of a phone screen. Selection/catalogue updates avoid replacing buttons during a held pointer interaction. The UI updates at up to 5 Hz, independently of the map render. No hover or long-press interaction is required.
+
+## Persistence and migration
+
+Save envelope version **1** contains a millisecond timestamp, JSON payload and FNV integrity checksum. The checksum detects accidental corruption; it is not an authentication mechanism. World validation rejects unknown definitions, invalid quantities/coordinates/needs, duplicate identities and invalid ID sequences before state reaches gameplay.
+
+IndexedDB database `hearthfield`, schema 1, contains `saves/latest` and `saves/backup`. Both writes occur in one transaction; queued snapshots preserve local write ordering. Page hide also writes a best-effort synchronous recovery envelope to localStorage. Resume validates all candidates and picks the newest valid timestamp. Complete read failure never silently overwrites the original data.
+
+Active jobs are intentionally ephemeral across a load: drop cargo exactly once into a new physical stack, snap to the nearest tile, clear jobs, then let assignment rebuild ownership. Persistent object progress and delivered quantities survive. This reduces the migration surface of the scheduler. Future schema changes must add explicit version dispatch/migration in the codec; do not reinterpret a newer payload as v1.
+
+Web Locks hold an exclusive writer for the page lifetime where supported; a competing tab cannot save, import or start a replacement. In insecure HTTP contexts without that API, the application requires the user to keep a single active tab.
+
+Production builds generate a service worker with exact hashed asset filenames. The worker serves the precached shell offline, scopes cleanup to this app's caches, and does not force an update into a running colony. Static asset matches ignore `Vary` because module and precache requests differ in Origin headers, although the same-origin immutable file contents do not. A real Chromium offline reload verifies this path.

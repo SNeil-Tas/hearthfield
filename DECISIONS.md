@@ -1,0 +1,19 @@
+# Decisions
+
+## 2026-09-18 · Initial playable
+
+1. **TypeScript + Vite + browser APIs.** No application framework, ECS, game engine, runtime graphics library or persistence wrapper is needed for this slice. Strict types and separated modules provide testability without a generic framework. Vitest, Playwright and Prettier are development-only tools. Commit the lockfile for reproducibility.
+2. **Canvas 2D, viewport culling, DPR capped at 2.** The expected visible geometry and 3–20 pawns fit this approach. Desktop simulation measurements are recorded; a real Android rendering/battery profile remains required before renderer changes.
+3. **80×80 map; 100 ms ticks.** Preserve GDD scale. Movement is frequent; needs/work discovery are slow. Drop background time and cap catch-up after long stalls. Rendering smooths visuals without altering simulation positions.
+4. **Explicit physical cargo and exclusive reservations.** No build-at-placement deduction. Pickup and delivery are separate phases; cancellation, failed paths and needs interruptions release locks and preserve materials. Builders perform their own blueprint deliveries; haulers move loose resources to stockpiles.
+5. **A shared work board with bounded assignment.** Work preferences, skill and distance rank candidates. Failed routes cool down. A spatial job index is deferred until evidence requires it.
+6. **Area orders; axis-aligned wall strokes.** One finger pans in inspect mode and makes intentions in tool mode. Two fingers pan/zoom everywhere. Single-tile beds/doors avoid accidentally painting expensive furniture. No essential long press, nested menu or direct colonist movement order.
+7. **Survival autonomy.** Food and rest override work. Low food with empty stores triggers berry gathering even without a designation; exhaustion uses an available bed or ground sleep. Idle colonists leave wall sites automatically. These are autonomous behaviors, not RTS control.
+8. **Small, finite ecology.** Berry bushes make food acquisition possible without a cooking/farming chain. Stone can be gathered and hauled, but the three current building definitions use wood. Trees and berries do not regrow yet.
+9. **Provisional identity only.** Hearthfield, the settler names, woodland colors and shape art are original placeholders. They do not decide the unresolved long-term fiction, victory conditions or distinctive campaign systems.
+10. **Latest save + backup + export/import.** Add a version/checksum and validate before use. Scheduler state is reconstructed on resume, preserving cargo and object progress. Corrupt/unavailable saves launch a protected preview. Multi-tab writer exclusion uses Web Locks where available. Multiple named manual slots remain deferred.
+11. **Do not simulate offline elapsed time.** Closing a phone tab should not kill the colony. Resume starts at 1×; camera, open panels and pause state are not persistent game state in v1.
+12. **Production-only PWA.** Cache exact build assets and local icons; retain normal browser use. No service worker in development, external asset dependencies, analytics, hosting account or publication.
+13. **Combat and cooking deferred.** The task explicitly prioritises reliable autonomy/logistics over the GDD's simple threat. This pass includes health damage from starvation but clamps health at 1; no incapacitation, death, raids, drafting, attacks or medical work. This is an explicit prototype limitation, not a finished survival model.
+14. **No Git identity impersonation.** The directory had no repository and Git had no configured author. Milestone commits use a per-command `Codex <codex@local>` identity; global Git configuration and unrelated repositories remain untouched.
+15. **Dedicated ports.** Development defaults to 5180 and preview to 4180. Tests reserve 5187/4187 and reject existing listeners. Port 5173 was already occupied by unrelated software during verification and was not modified.
