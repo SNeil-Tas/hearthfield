@@ -26,6 +26,7 @@ body {
   inset: 0;
   user-select: none;
   -webkit-user-select: none;
+  -webkit-touch-callout: none;
 }
 button {
   font: inherit;
@@ -720,6 +721,7 @@ meter::-webkit-meter-even-less-good-value {
   color: #ebf0ce;
   background: #182f28c9;
   padding: 5px 9px;
+  white-space: pre-line;
   pointer-events: none;
 }
 code {

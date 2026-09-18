@@ -6,6 +6,18 @@ import type { UIState } from './state';
 import { icon, escapeHTML as esc } from './icons';
 import { contextHTML, panelHTML } from './panels';
 
+export interface DebugMetrics {
+  fps: number;
+  lastTickMs: number;
+  worstTickMs: number;
+  activeJobs: number;
+  viewport: string;
+  dpr: number;
+  standalone: boolean;
+  serviceWorker: string;
+  lastSave: string;
+}
+
 export class Interface {
   readonly canvas: HTMLCanvasElement;
   private root: HTMLElement;
@@ -54,7 +66,14 @@ export class Interface {
     });
     root.querySelector('.panel-shield')!.addEventListener('click', () => action('close-panel', ''));
   }
-  update(w: World, ui: UIState, speed: Speed, reservationCount: number, owner?: string) {
+  update(
+    w: World,
+    ui: UIState,
+    speed: Speed,
+    reservationCount: number,
+    owner?: string,
+    metrics?: DebugMetrics,
+  ) {
     const portraits = w.pawns.map((p) => p.id).join();
     if (portraits !== this.portraitKey) {
       this.portraitKey = portraits;
@@ -130,8 +149,9 @@ export class Interface {
       .querySelectorAll<HTMLButtonElement>('[data-action="panel"]')
       .forEach((b) => b.classList.toggle('active', b.dataset.value === ui.panel));
     this.el('.debug-overlay').hidden = !ui.debug;
-    this.el('.debug-overlay').textContent =
-      `tick ${w.tick} · ${speed}× · ${w.nodes.length} nodes · ${w.items.length} stacks · ${reservationCount} locks`;
+    this.el('.debug-overlay').textContent = metrics
+      ? `FPS ${metrics.fps} · tick ${metrics.lastTickMs.toFixed(2)}ms (worst ${metrics.worstTickMs.toFixed(2)}ms)\n${metrics.activeJobs} active jobs · ${w.nodes.length} nodes · ${w.items.length} stacks · ${reservationCount} locks\n${metrics.viewport} · DPR ${metrics.dpr} · ${metrics.standalone ? 'standalone' : 'browser'} · SW ${metrics.serviceWorker}\nLast save ${metrics.lastSave}`
+      : `tick ${w.tick} · ${speed}× · ${w.nodes.length} nodes · ${w.items.length} stacks · ${reservationCount} locks`;
     const toast = this.el('.toast');
     toast.hidden = !ui.toast;
     toast.textContent = ui.toast;

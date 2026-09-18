@@ -23,6 +23,7 @@ export class Gestures {
   private anchor: Point | null = null;
   private dragged = false;
   private multitouch = false;
+  private suppressCommit = false;
   constructor(
     canvas: HTMLCanvasElement,
     camera: Camera,
@@ -46,8 +47,10 @@ export class Gestures {
         this.anchor = camera.world(p);
         this.dragged = false;
         this.multitouch = false;
+        this.suppressCommit = false;
       } else {
         this.multitouch = true;
+        this.suppressCommit = true;
         preview([]);
       }
     });
@@ -77,14 +80,21 @@ export class Gestures {
       if (!this.pointers.has(e.pointerId)) return;
       const p = point(e);
       this.pointers.delete(e.pointerId);
-      if (!cancelled && !this.multitouch && this.anchor) {
+      if (!cancelled && !this.suppressCommit && this.anchor) {
         if (getTool() !== 'inspect') commit(gestureTiles(this.anchor, camera.world(p), getTool()));
         else if (!this.dragged) select(camera.world(p));
       }
       preview([]);
-      if (!this.pointers.size) {
+      if (this.pointers.size === 1) {
+        const remaining = [...this.pointers.values()][0]!;
+        this.start = remaining;
+        this.anchor = camera.world(remaining);
+        this.dragged = true;
+        this.multitouch = false;
+      } else if (!this.pointers.size) {
         this.start = this.anchor = null;
         this.multitouch = false;
+        this.suppressCommit = false;
       }
     };
     canvas.addEventListener('pointerup', (e) => finish(e, false));
@@ -92,6 +102,12 @@ export class Gestures {
     canvas.addEventListener('lostpointercapture', (e) => {
       this.pointers.delete(e.pointerId);
       preview([]);
+      if (!this.pointers.size) {
+        this.start = this.anchor = null;
+        this.dragged = false;
+        this.multitouch = false;
+        this.suppressCommit = false;
+      }
     });
     canvas.addEventListener(
       'wheel',

@@ -2,7 +2,9 @@
 
 ## Environment
 
-Windows, Node 22.23.2, npm 12.0.2. Chromium supplied by Playwright. Production build contains about **48 kB JavaScript (18 kB gzip)** and **16 kB CSS (4 kB gzip)** plus the HTML, manifest, service worker and two small generated icons. No runtime CDN resources.
+Windows, Node 24.19.0, npm 11.17.0. Chromium supplied by Playwright. Production build contains **49.77 kB JavaScript (18.50 kB gzip)** and **15.84 kB CSS (4.15 kB gzip)** plus the HTML, manifest, service worker and two generated icons. No runtime CDN resources.
+
+The browser suite used Playwright 1.55.0 with Chromium 153.0.8010.12 (Playwright browser revision 1243). The browser binary was installed locally before the passing run.
 
 ## Automated checks
 
@@ -32,6 +34,8 @@ Windows, Node 22.23.2, npm 12.0.2. Chromium supplied by Playwright. Production b
 - Desktop/portrait UI and absence of document overflow.
 - Competing-tab write prevention and ownership after the original tab closes.
 - Held context actions surviving live status updates without being replaced under the pointer.
+
+The completed run passed all **9 tests in 22.2 seconds**. `npm run typecheck`, `npm test -- --run` (**17 tests in 3.33 seconds**), `npm run build`, `npm run verify:production`, and `npm run format:check` also passed. No GitHub deployment was performed.
 
 Screenshots are written to `test-results/`: `mobile-colony.png`, `mobile-work.png`, `offline-colony.png`, `desktop-colony.png`, `portrait-fallback.png`. The directory is ignored because these are regenerated outputs. A selected mobile view is retained in `docs/mobile-colony.png`.
 
@@ -63,3 +67,7 @@ These are **headless desktop simulation measurements**. They do not include rend
 ## Remaining verification
 
 Physical Android Chrome/iOS Safari, installation UX, long-running browser/OS suspension, storage eviction/quota exhaustion, real-device rendering/battery behavior, exhaustive map seeds and large sealed construction layouts remain unverified. These limits are carried into the implementation status rather than presented as passing results.
+
+## Mobile deployment gate
+
+The production path is now covered by the build and browser checks: the HTML entry point, manifest, generated service worker, icons, relative asset paths, service-worker registration, save/reload, and fully offline reload are exercised from the production preview. The GitHub Pages workflow repeats `npm ci` and `npm run build` on every `main` push. The deployed public URL and physical Android installation/offline flow remain pending until this repository is connected to a GitHub remote and tested on a phone.

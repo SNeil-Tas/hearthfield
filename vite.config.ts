@@ -15,7 +15,11 @@ export default defineConfig({
           'icons/icon-192.png',
           'icons/icon-512.png',
         ];
-        const version = Date.now().toString(36);
+        // A content-independent build identifier is enough to make a newly
+        // deployed worker replace the previous shell. The worker itself is
+        // fetched outside the application cache, so browser update checks can
+        // observe this file on every deployment.
+        const version = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
         this.emitFile({
           type: 'asset',
           fileName: 'sw.js',

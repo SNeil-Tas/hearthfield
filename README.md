@@ -19,6 +19,7 @@ Open **http://localhost:5180**. Vite reports another port if that one is occupie
 
 ```sh
 npm run build           # Strict TypeScript check + production bundle
+npm run verify:production # Check dist paths, manifest, icons and service worker after build
 npm run preview         # Production build at http://localhost:4180
 npm run typecheck
 npm test                # Headless simulation / persistence tests
@@ -70,6 +71,12 @@ Desktop shortcuts: **Space** toggles pause; **Escape** closes a panel/tool/selec
 - Export periodically for a portable backup. Browser data clearing/eviction removes local saves; page termination can prevent a final save. The regular autosave limits ordinary loss to roughly 15 seconds.
 
 The production service worker precaches the complete shell. Updates activate after the old app's tabs close. Development deliberately has no service worker. No hosting deployment has been made.
+
+## Deploy over HTTPS
+
+The repository includes [`.github/workflows/deploy-pages.yml`](.github/workflows/deploy-pages.yml). It runs the production build and publishes `dist/` to GitHub Pages after every push to `main`, with a manual dispatch option. The app uses relative Vite, manifest, and service-worker paths, so it works at a GitHub Pages project subpath and remains installable from that HTTPS origin.
+
+This checkout currently has no Git remote or public deployment URL. To publish it, create or choose a GitHub repository, add it as the `origin` remote, push `main`, and enable **Settings → Pages → GitHub Actions** if GitHub has not enabled the workflow automatically. GitHub will show the resulting HTTPS URL in the workflow and Pages settings. Open that URL on Android Chrome, use **Install app**, and test the installed PWA. Future pushes to `main` update the site automatically; the generated service-worker cache version removes the previous shell after the old app closes.
 
 ## Development orientation
 

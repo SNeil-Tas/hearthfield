@@ -20,11 +20,27 @@
 
 ## Verification
 
-- **17 simulation tests** and **9 Chromium browser tests** passing before handoff.
-- TypeScript/build and formatting checks; zero known dependency audit findings at verification time.
+- **17 simulation tests** and **9 Chromium browser tests** passing in the latest verification run.
+- TypeScript/build, production path/PWA, and formatting checks passed. No GitHub deployment was performed.
 - Actual Chromium touch events, 844×390 and 667×375 landscape, 390×844 portrait, 1440×900 desktop, save/reload and offline production reload.
 - Tested a 15-minute three-colonist simulation and a ten-minute 20-colonist workload. The latter measured about 1.52 s for 6,000 ticks on this desktop (p95 1.47 ms/tick; max 14.04 ms in that run).
 - Screenshots inspected. See [verification notes](docs/VERIFICATION.md) for scope and limits. No physical Android or iOS device was available for this pass.
+
+## Latest verification run
+
+- Standard system Node.js: `C:\Program Files\nodejs\node.exe` v24.19.0; npm 11.17.0.
+- `npm run typecheck`: passed.
+- `npm test -- --run`: 17/17 passed in 3.33 seconds.
+- `npm run build`: passed; 49.77 kB JavaScript and 15.84 kB CSS before gzip.
+- `npm run verify:production`: passed; relative bundle paths, manifest, icons, and generated service worker verified.
+- `npm run format:check`: passed.
+- `npm run test:browser`: 9/9 Chromium tests passed in 22.2 seconds, including touch, phone-sized layouts, save/reload, offline startup, and multi-tab protection.
+
+## Verification scope
+
+- **Desktop verification:** simulation, persistence, build, formatting, and Chromium browser tests on the development PC.
+- **Emulated mobile verification:** Chromium touch events and landscape/portrait viewport checks at 844×390, 667×375, and 390×844.
+- **Physical-device verification:** pending. Use [docs/MOBILE_DEVICE_TEST.md](docs/MOBILE_DEVICE_TEST.md) against the deployed HTTPS URL. Thermals, battery, Android installation UX, background suspension, and real-device rendering remain unverified.
 
 ## Partial systems and known limitations
 

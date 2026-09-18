@@ -11,7 +11,7 @@ import { decode, encode } from './persistence/serialization';
 import { Camera } from './view/camera';
 import { Renderer } from './view/renderer';
 import { Gestures } from './input/gestures';
-import { Interface } from './ui/interface';
+import { Interface, type DebugMetrics } from './ui/interface';
 import { initialUI, type Panel, type Tool } from './ui/state';
 import { selectAt } from './ui/selection';
 
@@ -22,6 +22,19 @@ async function bootstrap() {
   const clock = new SimulationClock();
   const ownsSession = await acquireWriter();
   let sim: Simulation;
+  const metrics: DebugMetrics = {
+    fps: 0,
+    lastTickMs: 0,
+    worstTickMs: 0,
+    activeJobs: 0,
+    viewport: `${window.innerWidth}×${window.innerHeight}`,
+    dpr: window.devicePixelRatio || 1,
+    standalone:
+      window.matchMedia('(display-mode: standalone)').matches ||
+      (navigator as Navigator & { standalone?: boolean }).standalone === true,
+    serviceWorker: 'unsupported',
+    lastSave: 'not yet',
+  };
   let savingAllowed = true;
   let startupMessage = '';
   try {
@@ -62,6 +75,7 @@ async function bootstrap() {
     }
     try {
       await store.save(sim.world, mirror);
+      metrics.lastSave = new Date().toLocaleTimeString();
       view.saveStatus('Saved on this device');
       if (manual) notify('Colony saved on this device.');
     } catch {
@@ -227,6 +241,7 @@ async function bootstrap() {
       clock.speed,
       sim.reservations.size,
       ui.selectedId ? sim.reservations.owner(ui.selectedId) : undefined,
+      metrics,
     );
   new ResizeObserver(() => renderer.resize()).observe(view.canvas);
   renderer.resize();
@@ -307,10 +322,27 @@ async function bootstrap() {
       }
     });
   let lastFrame = performance.now(),
-    lastUI = 0;
+    lastUI = 0,
+    frameCount = 0,
+    fpsWindow = lastFrame;
   const frame = (now: number) => {
     if (!document.hidden) {
-      clock.advance((now - lastFrame) / 1000, () => sim.step());
+      clock.advance((now - lastFrame) / 1000, () => {
+        const started = performance.now();
+        sim.step();
+        const duration = performance.now() - started;
+        metrics.lastTickMs = duration;
+        metrics.worstTickMs = Math.max(metrics.worstTickMs, duration);
+      });
+      frameCount++;
+      if (now - fpsWindow >= 1000) {
+        metrics.fps = Math.round((frameCount * 1000) / (now - fpsWindow));
+        frameCount = 0;
+        fpsWindow = now;
+      }
+      metrics.activeJobs = sim.world.pawns.filter((p) => !!p.job).length;
+      metrics.viewport = `${window.innerWidth}×${window.innerHeight}`;
+      metrics.dpr = window.devicePixelRatio || 1;
       renderer.draw(sim.world, ui, (now - lastFrame) / 1000, clock.speed === 0);
       if (now - lastUI > 200) {
         refresh();
@@ -338,7 +370,17 @@ async function bootstrap() {
   if ('serviceWorker' in navigator && import.meta.env.PROD)
     void navigator.serviceWorker
       .register('./sw.js')
-      .catch(() => notify('Offline installation unavailable. The game still works online.'));
+      .then((registration) => {
+        metrics.serviceWorker = registration.active ? 'active' : 'installing';
+        void registration.update();
+        void navigator.serviceWorker.ready.then(() => {
+          metrics.serviceWorker = 'active';
+        });
+      })
+      .catch(() => {
+        metrics.serviceWorker = 'error';
+        notify('Offline installation unavailable. The game still works online.');
+      });
   // Headless browser diagnostics are only included in development builds.
   if (import.meta.env.DEV)
     Object.assign(window, {
