@@ -28,5 +28,9 @@ if (!manifest.start_url.startsWith('./') || !manifest.scope.startsWith('./'))
   throw new Error('Manifest start_url and scope must be relative for project pages.');
 if (!worker.includes('CACHE =') || !worker.includes('index.html'))
   throw new Error('Generated service worker is missing its versioned shell cache.');
+if (!worker.includes('SKIP_WAITING') || !worker.includes('self.skipWaiting()'))
+  throw new Error('Generated service worker is missing controlled update activation.');
+if (!worker.includes("event.request.mode === 'navigate'") || !worker.includes('cache.put'))
+  throw new Error('Generated service worker is missing network-first navigation handling.');
 
 console.log('Production asset paths, manifest, icons, and service worker look valid.');

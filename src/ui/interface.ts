@@ -7,6 +7,7 @@ import { icon, escapeHTML as esc } from './icons';
 import { contextHTML, panelHTML } from './panels';
 
 export interface DebugMetrics {
+  build: string;
   fps: number;
   lastTickMs: number;
   worstTickMs: number;
@@ -32,7 +33,7 @@ export class Interface {
       <div class="world-label"><span class="season-dot"></span><span id="day-label">Day 1 · Early morning</span><span class="world-divider">/</span><span>Temperate woodland</span></div>
       <button class="focus-button icon-button" data-action="focus" aria-label="Focus settlement">${icon('focus')}</button>
       <aside class="guide" aria-label="Getting started"><button class="icon-button context-close" data-action="dismiss-guide" aria-label="Dismiss getting started">${icon('close')}</button><span class="eyebrow">A SMALL BEGINNING</span><h1>Make room<br>for tomorrow.</h1><p>Three settlers. An open meadow.<br>The rest is up to you.</p><ol><li>Mark trees in <b>Orders</b>.</li><li>Plan beds in <b>Architect</b>.</li><li>Watch your people make it happen.</li></ol><button class="text-button" data-action="dismiss-guide">Let’s settle in <span>→</span></button></aside>
-      <div class="alert" role="status"></div><div class="tool-hint" hidden></div><div class="toast" role="status" hidden></div>
+      <div class="alert" role="status"></div><div class="update-banner" role="status" hidden><span>New version available</span><button data-action="update">Reload</button><button data-action="update-later">Later</button></div><div class="tool-hint" hidden></div><div class="toast" role="status" hidden></div>
       <div class="panel-shield" hidden></div><section class="panel" hidden aria-label="Colony management"></section><aside class="context" hidden aria-label="Selection information"></aside>
       <nav class="bottom-hud" aria-label="Colony controls"><div class="navigation">${[
         ['architect', 'build', 'Architect'],
@@ -152,7 +153,7 @@ export class Interface {
       .forEach((b) => b.classList.toggle('active', b.dataset.value === ui.panel));
     this.el('.debug-overlay').hidden = !ui.debug;
     this.el('.debug-overlay').textContent = metrics
-      ? `FPS ${metrics.fps} · tick ${metrics.lastTickMs.toFixed(2)}ms (worst ${metrics.worstTickMs.toFixed(2)}ms)\n${metrics.activeJobs} active jobs · ${w.nodes.length} nodes · ${w.items.length} stacks · ${reservationCount} locks\n${metrics.viewport} · DPR ${metrics.dpr} · ${metrics.standalone ? 'standalone' : 'browser'} · SW ${metrics.serviceWorker}\nLast save ${metrics.lastSave}`
+      ? `Hearthfield ${metrics.build}\nFPS ${metrics.fps} · tick ${metrics.lastTickMs.toFixed(2)}ms (worst ${metrics.worstTickMs.toFixed(2)}ms)\n${metrics.activeJobs} active jobs · ${w.nodes.length} nodes · ${w.items.length} stacks · ${reservationCount} locks\n${metrics.viewport} · DPR ${metrics.dpr} · ${metrics.standalone ? 'standalone' : 'browser'} · SW ${metrics.serviceWorker}\nLast save ${metrics.lastSave}`
       : `tick ${w.tick} · ${speed}× · ${w.nodes.length} nodes · ${w.items.length} stacks · ${reservationCount} locks`;
     const toast = this.el('.toast');
     toast.hidden = !ui.toast;
@@ -160,6 +161,12 @@ export class Interface {
   }
   saveStatus(text: string) {
     this.el('.save-indicator').textContent = text;
+  }
+  showUpdate() {
+    this.el('.update-banner').hidden = false;
+  }
+  hideUpdate() {
+    this.el('.update-banner').hidden = true;
   }
   private el(selector: string) {
     return this.root.querySelector<HTMLElement>(selector)!;

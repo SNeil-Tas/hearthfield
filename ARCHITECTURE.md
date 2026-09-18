@@ -84,7 +84,7 @@ Active jobs are intentionally ephemeral across a load: drop cargo exactly once i
 
 Web Locks hold an exclusive writer for the page lifetime where supported; a competing tab cannot save, import or start a replacement. In insecure HTTP contexts without that API, the application requires the user to keep a single active tab.
 
-Production builds generate a service worker with exact hashed asset filenames. The worker serves the precached shell offline, scopes cleanup to this app's caches, and does not force an update into a running colony. Static asset matches ignore `Vary` because module and precache requests differ in Origin headers, although the same-origin immutable file contents do not. A real Chromium offline reload verifies this path.
+Production builds generate a service worker with exact hashed asset filenames. The worker serves immutable assets from the precache, uses network-first navigation with the cached shell as an offline fallback, and scopes cleanup to this app's caches. A waiting worker responds to an explicit `SKIP_WAITING` message; the page offers Reload and performs one guarded reload on `controllerchange`. Static asset matches ignore `Vary` because module and precache requests differ in Origin headers, although the same-origin immutable file contents do not. A real Chromium offline reload verifies this path.
 
 The static deployment remains a Vite build published by GitHub Pages. `index.html`, the manifest, service-worker registration, and generated asset references use relative paths so a project-page subpath works without changing simulation or persistence code. Each production build emits a fresh worker cache name; registration requests an update, while the worker waits for old tabs to close before claiming the next launch.
 

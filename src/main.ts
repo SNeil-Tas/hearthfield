@@ -14,6 +14,7 @@ import { Gestures } from './input/gestures';
 import { Interface, type DebugMetrics } from './ui/interface';
 import { initialUI, type Panel, type Tool } from './ui/state';
 import { selectAt } from './ui/selection';
+import { APP_VERSION, BUILD_ID } from './build';
 
 async function bootstrap() {
   const store = new SaveStore();
@@ -27,6 +28,7 @@ async function bootstrap() {
     lastTickMs: 0,
     worstTickMs: 0,
     activeJobs: 0,
+    build: `v${APP_VERSION} · ${BUILD_ID}`,
     viewport: `${window.innerWidth}×${window.innerHeight}`,
     dpr: window.devicePixelRatio || 1,
     standalone:
@@ -36,6 +38,8 @@ async function bootstrap() {
     lastSave: 'not yet',
   };
   let savingAllowed = true;
+  let swRegistration: ServiceWorkerRegistration | null = null;
+  let swRefreshing = false;
   let startupMessage = '';
   try {
     const loaded = await store.load();
@@ -193,6 +197,22 @@ async function bootstrap() {
         break;
       case 'debug':
         ui.debug = !ui.debug;
+        break;
+      case 'update':
+        swRegistration?.waiting?.postMessage({ type: 'SKIP_WAITING' });
+        break;
+      case 'update-later':
+        view.hideUpdate();
+        break;
+      case 'check-updates':
+        if (!swRegistration) notify('Updates are unavailable in this browser.');
+        else
+          void swRegistration
+            .update()
+            .then(() => {
+              if (!swRegistration?.waiting) notify('Hearthfield is up to date.');
+            })
+            .catch(() => notify('Could not check for updates right now.'));
         break;
       case 'journal':
         ui.panel = 'journal';
@@ -380,6 +400,22 @@ async function bootstrap() {
     void navigator.serviceWorker
       .register('./sw.js')
       .then((registration) => {
+        swRegistration = registration;
+        const offerUpdate = () => view.showUpdate();
+        const hadController = !!navigator.serviceWorker.controller;
+        if (registration.waiting) offerUpdate();
+        registration.addEventListener('updatefound', () => {
+          const worker = registration.installing;
+          if (!worker) return;
+          worker.addEventListener('statechange', () => {
+            if (worker.state === 'installed' && navigator.serviceWorker.controller) offerUpdate();
+          });
+        });
+        navigator.serviceWorker.addEventListener('controllerchange', () => {
+          if (!hadController || swRefreshing) return;
+          swRefreshing = true;
+          window.location.reload();
+        });
         metrics.serviceWorker = registration.active ? 'active' : 'installing';
         void registration.update();
         void navigator.serviceWorker.ready.then(() => {

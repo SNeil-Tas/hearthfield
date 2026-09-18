@@ -2,6 +2,8 @@
 
 **Milestone:** v0.2 survival loop in progress, built on the first playable foundation. Original GDD preserved unchanged.
 
+**Patch:** v0.2.1 PWA update delivery fix in progress; no gameplay scope added.
+
 ## Completed
 
 - Seeded 80×80 terrain, water barriers, trees, berry bushes and stone outcrops; original viewport-culled Canvas visuals.

@@ -702,6 +702,33 @@ meter::-webkit-meter-even-less-good-value {
   text-align: center;
   z-index: 8;
 }
+.update-banner {
+  position: absolute;
+  top: max(76px, calc(env(safe-area-inset-top) + 56px));
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 8px 7px 14px;
+  border: 1px solid var(--edge);
+  border-radius: 8px;
+  background: #243d34f5;
+  box-shadow: 0 5px 20px #24392b55;
+  font-size: 11px;
+  z-index: 12;
+  white-space: nowrap;
+}
+.update-banner button {
+  min-height: 40px;
+  padding: 0 10px;
+  border-radius: 6px;
+  background: #ebd1a31a;
+}
+.update-banner button[data-action='update'] {
+  color: #f1d49e;
+  background: #e4c18c2b;
+}
 .alert {
   position: absolute;
   left: 50%;

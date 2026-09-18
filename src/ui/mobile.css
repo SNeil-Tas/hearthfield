@@ -427,10 +427,14 @@
     font-size: 8px;
   }
   .toast,
-  .alert {
+  .alert,
+  .update-banner {
     top: 147px;
     width: max-content;
     max-width: calc(100% - 32px);
+  }
+  .update-banner {
+    white-space: normal;
   }
   .debug-overlay {
     bottom: 128px;

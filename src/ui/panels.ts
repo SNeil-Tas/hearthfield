@@ -3,6 +3,7 @@ import type { World } from '../sim/types';
 import type { Panel, UIState } from './state';
 import { escapeHTML as esc, icon } from './icons';
 import { foodType, resourceTotal, shelteredTiles, tileKey } from '../sim/world';
+import { APP_VERSION, BUILD_ID } from '../build';
 
 const toolButton = (tool: string, label: string, detail: string, symbol = tool) =>
   `<button class="catalogue-item" data-action="tool" data-value="${tool}"><span class="catalogue-icon">${icon(symbol)}</span><span><strong>${label}</strong><small>${detail}</small></span><span class="chevron">›</span></button>`;
@@ -64,6 +65,7 @@ export function panelHTML(panel: Panel, w: World, debug: boolean) {
       );
     case 'settings':
       return (
+        `<p class="panel-note">Hearthfield v${APP_VERSION} · Build ${BUILD_ID}</p><button class="text-button" data-action="check-updates">Check for updates</button>` +
         heading('HEARTHFIELD · FIRST PLAYABLE', 'Your colony') +
         `<div class="settings-list"><button data-action="save">${icon('save')} Save now <span>Local device</span></button><button data-action="export">${icon('journal')} Export save <span>Keep a backup</span></button><button data-action="import">${icon('save')} Import save <span>Restore a backup</span></button><button data-action="journal">${icon('journal')} Field notes <span>Colony activity</span></button><button data-action="debug">${icon('focus')} Diagnostics <span>${debug ? 'On' : 'Off'}</span></button><button data-action="fullscreen">${icon('focus')} Fullscreen <span>When supported</span></button><button data-action="help">${icon('leaf')} Getting started</button><button class="danger" data-action="new">${icon('home')} New colony <span>Replace current save…</span></button></div><p class="panel-note">Autosaves every 15 seconds and when hidden. Simulation rests while you are away. Install from your browser menu on HTTPS.</p>`
       );

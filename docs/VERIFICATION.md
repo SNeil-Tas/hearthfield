@@ -83,6 +83,12 @@ iOS Safari, storage eviction/quota exhaustion, exhaustive map seeds and large se
 
 The production path is covered by the build and browser checks: the HTML entry point, manifest, generated service worker, icons, relative asset paths, service-worker registration, save/reload, and fully offline reload are exercised from the production preview. The GitHub Pages workflow repeats `npm ci` and `npm run build` on every `main` push. The existing deployed URL and user-reported Android installation/offline flow passed; the v0.2 build still requires its final Pages deployment and live smoke test after the release commit.
 
+## v0.2.1 update-delivery verification
+
+The stale-client cause was a waiting replacement worker combined with the previous worker's cache-first navigation response for `index.html`. The patch uses commit-based worker/cache identifiers, network-first navigation with offline fallback, a waiting-worker Reload prompt, explicit `SKIP_WAITING`, and one guarded `controllerchange` reload. Cache activation deletes only `hearthfield-*` Cache Storage entries; IndexedDB save data is not touched.
+
+The browser suite now checks the production build identifier and manual update-check control. The remaining physical-device check is to install an older build, deploy a later build, accept Reload, confirm the identifier changes, and verify the colony remains present and offline launch still works.
+
 ## v0.2 release deployment addendum
 
 Pages run [35311555660](https://github.com/SNeil-Tas/hearthfield/actions/runs/35311555660) deployed the v0.2 build successfully. A live Playwright smoke test returned HTTP 200, rendered three colonists, loaded the manifest and service worker with HTTP 200, detected relative hashed assets, and reported no page errors or failed requests.

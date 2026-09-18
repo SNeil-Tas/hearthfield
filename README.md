@@ -73,13 +73,13 @@ Desktop shortcuts: **Space** toggles pause; **Escape** closes a panel/tool/selec
 - No offline time catch-up. Browser closure, backgrounding and reopening do not fast-forward hunger or construction. Resume starts at 1×.
 - Export periodically for a portable backup. Browser data clearing/eviction removes local saves; page termination can prevent a final save. The regular autosave limits ordinary loss to roughly 15 seconds.
 
-The production service worker precaches the complete shell. Updates activate after the old app's tabs close. Development deliberately has no service worker.
+The production service worker precaches immutable shell assets and uses network-first navigation with offline fallback. When a new worker is waiting, Hearthfield shows a Reload action and activates the new build once, without touching IndexedDB. Development deliberately has no service worker.
 
 ## Deploy over HTTPS
 
 The repository includes [`.github/workflows/deploy-pages.yml`](.github/workflows/deploy-pages.yml). It runs the production build and publishes `dist/` to GitHub Pages after every push to `main`, with a manual dispatch option. The app uses relative Vite, manifest, and service-worker paths, so it works at a GitHub Pages project subpath and remains installable from that HTTPS origin.
 
-Repository: [github.com/SNeil-Tas/hearthfield](https://github.com/SNeil-Tas/hearthfield). Live site: [sneil-tas.github.io/hearthfield](https://sneil-tas.github.io/hearthfield/). The `main` branch deploys through GitHub Actions using [`.github/workflows/deploy-pages.yml`](.github/workflows/deploy-pages.yml). Future pushes to `main` update the site automatically; the generated service-worker cache version removes the previous shell after the old app closes. Open the live HTTPS URL on Android Chrome, use **Install app**, and test the installed PWA. Physical Android testing is still pending.
+Repository: [github.com/SNeil-Tas/hearthfield](https://github.com/SNeil-Tas/hearthfield). Live site: [sneil-tas.github.io/hearthfield](https://sneil-tas.github.io/hearthfield/). The `main` branch deploys through GitHub Actions using [`.github/workflows/deploy-pages.yml`](.github/workflows/deploy-pages.yml). Future pushes to `main` update the site automatically; the generated service worker identifies the GitHub commit, prompts controlled activation, and removes the previous shell after activation. Open the live HTTPS URL on Android Chrome, use **Install app**, and test the installed PWA. Physical Android testing passed for the previous release; v0.2.1 update delivery still needs the targeted phone check.
 
 ## Development orientation
 

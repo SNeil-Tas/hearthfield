@@ -193,6 +193,16 @@ test('production PWA caches shell and resumes local colony fully offline', async
   expect(errors).toEqual([]);
 });
 
+test('production diagnostics expose the build and update check', async ({ page }) => {
+  await page.goto('http://127.0.0.1:4187/');
+  await expect(page.locator('.colonist')).toHaveCount(3);
+  await page.getByRole('button', { name: 'More', exact: true }).click();
+  await expect(page.locator('.panel')).toContainText('Hearthfield v0.2.1');
+  await expect(page.locator('.panel')).toContainText('Build local');
+  await page.getByRole('button', { name: 'Check for updates' }).click();
+  await expect(page.locator('.toast')).toContainText(/up to date|Could not check/);
+});
+
 test('area gathering, cancelled touch and pinch in placement mode do not issue stray orders', async ({
   page,
 }) => {
