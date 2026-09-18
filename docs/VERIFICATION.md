@@ -2,13 +2,13 @@
 
 ## Environment
 
-Windows, Node 24.19.0, npm 11.17.0. Chromium supplied by Playwright. Production build contains **49.77 kB JavaScript (18.50 kB gzip)** and **15.84 kB CSS (4.15 kB gzip)** plus the HTML, manifest, service worker and two generated icons. No runtime CDN resources.
+Windows, Node 24.19.0, npm 11.17.0. Chromium supplied by Playwright. The v0.2 production build contains **57.00 kB JavaScript (20.58 kB gzip)** and **15.84 kB CSS (4.15 kB gzip)** plus the HTML, manifest, service worker and two generated icons. No runtime CDN resources.
 
 The browser suite used Playwright 1.55.0 with Chromium 153.0.8010.12 (Playwright browser revision 1243). The browser binary was installed locally before the passing run.
 
 ## Automated checks
 
-`npm run build` checks strict TypeScript and produces the production bundle. `npm run format:check` checks maintained source/test/config formatting. `npm test` runs 17 meaningful headless cases:
+`npm run build` checks strict TypeScript and produces the production bundle. `npm run format:check` checks maintained source/test/config formatting. `npm test` runs 24 meaningful headless cases, including the original foundation and v0.2 survival-loop cases:
 
 - A* shortest detour, adjacency and unreachable targets.
 - Atomic reservations and complete owner release.
@@ -23,7 +23,7 @@ The browser suite used Playwright 1.55.0 with Chromium 153.0.8010.12 (Playwright
 - Save round-trip, carried material conservation, corruption/version/schema rejection.
 - Twenty colonists gathering/building on an 80×80 map for 6,000 ticks.
 
-`npm run test:browser` runs nine cases against dedicated dev and production servers:
+`npm run test:browser` runs ten cases against dedicated dev and production servers:
 
 - Landscape placement, work priority editing, construction, explicit save/reload and 667×375 resize.
 - Pan versus tap, real two-finger pinch, wheel zoom, pause/speed and cancellation.
@@ -34,14 +34,19 @@ The browser suite used Playwright 1.55.0 with Chromium 153.0.8010.12 (Playwright
 - Desktop/portrait UI and absence of document overflow.
 - Competing-tab write prevention and ownership after the original tab closes.
 - Held context actions surviving live status updates without being replaced under the pointer.
+- Growing-zone touch designation, cooking-station placement, crop/meal context UI, and deconstruction interaction.
 
-The completed run passed all **9 tests in 22.2 seconds**. `npm run typecheck`, `npm test -- --run` (**17 tests in 3.33 seconds**), `npm run build`, `npm run verify:production`, and `npm run format:check` also passed.
+The completed v0.2 run passed all **10 browser tests in 20.6 seconds**. `npm run typecheck`, `npm test -- --run` (**24 tests in 1.89 seconds**), `npm run build`, `npm run verify:production`, and `npm run format:check` also passed.
+
+## v0.2 verification addendum
+
+The v0.2 run supersedes the first-playable counts above: `npm test -- --run` passed 24 tests in 1.89 seconds, `npm run test:browser` passed 10 tests in 20.6 seconds, and typecheck, build, production path/PWA verification, and formatting all passed. The v0.2 build measured 57.00 kB JavaScript (20.58 kB gzip) and 15.84 kB CSS (4.15 kB gzip). The v0.2 build is ready for the final public deployment after the release commit.
 
 ## Published deployment
 
 The repository is [github.com/SNeil-Tas/hearthfield](https://github.com/SNeil-Tas/hearthfield). GitHub Pages deployment run [35306828769](https://github.com/SNeil-Tas/hearthfield/actions/runs/35306828769) passed the build and deploy jobs using [`.github/workflows/deploy-pages.yml`](../.github/workflows/deploy-pages.yml). The live site is [https://sneil-tas.github.io/hearthfield/](https://sneil-tas.github.io/hearthfield/).
 
-A read-only live smoke test returned HTTP 200, rendered three colonists, loaded the manifest and service worker with HTTP 200, detected relative hashed assets, and reported no page errors or failed requests. Physical Android testing remains the next gate.
+A read-only live smoke test returned HTTP 200, rendered three colonists, loaded the manifest and service worker with HTTP 200, detected relative hashed assets, and reported no page errors or failed requests. The user then reported passing browser play, landscape touch interaction, save/reopen, PWA installation, installed-app reopen, offline launch, and sustained real-device play without a major mobile usability or performance blocker.
 
 Screenshots are written to `test-results/`: `mobile-colony.png`, `mobile-work.png`, `offline-colony.png`, `desktop-colony.png`, `portrait-fallback.png`. The directory is ignored because these are regenerated outputs. A selected mobile view is retained in `docs/mobile-colony.png`.
 
@@ -72,8 +77,8 @@ These are **headless desktop simulation measurements**. They do not include rend
 
 ## Remaining verification
 
-Physical Android Chrome/iOS Safari, installation UX, long-running browser/OS suspension, storage eviction/quota exhaustion, real-device rendering/battery behavior, exhaustive map seeds and large sealed construction layouts remain unverified. These limits are carried into the implementation status rather than presented as passing results.
+iOS Safari, storage eviction/quota exhaustion, exhaustive map seeds and large sealed construction layouts remain unverified. The user-reported Android Chrome/PWA flow passed; detailed battery/thermal measurements and long-running OS suspension remain follow-up observations.
 
 ## Mobile deployment gate
 
-The production path is now covered by the build and browser checks: the HTML entry point, manifest, generated service worker, icons, relative asset paths, service-worker registration, save/reload, and fully offline reload are exercised from the production preview. The GitHub Pages workflow repeats `npm ci` and `npm run build` on every `main` push. The deployed public URL and physical Android installation/offline flow remain pending until this repository is connected to a GitHub remote and tested on a phone.
+The production path is covered by the build and browser checks: the HTML entry point, manifest, generated service worker, icons, relative asset paths, service-worker registration, save/reload, and fully offline reload are exercised from the production preview. The GitHub Pages workflow repeats `npm ci` and `npm run build` on every `main` push. The existing deployed URL and user-reported Android installation/offline flow passed; the v0.2 build still requires its final Pages deployment and live smoke test after the release commit.

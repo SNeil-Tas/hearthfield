@@ -5,6 +5,8 @@ export function flatWorld(): World {
   w.width = w.height = 12;
   w.terrain = Array(144).fill('soil');
   w.nodes = [];
+  w.crops = [];
+  w.growingZones = [];
   w.items = [];
   w.buildings = [];
   w.blueprints = [];

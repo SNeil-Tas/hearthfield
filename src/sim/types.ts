@@ -4,13 +4,27 @@ export interface Point {
 }
 export type Terrain = 'soil' | 'fertile' | 'rock' | 'water';
 export type Resource = 'wood' | 'stone' | 'food';
-export type BuildingKind = 'wall' | 'door' | 'bed';
+export type FoodType = 'raw' | 'meal';
+export type BuildingKind = 'wall' | 'door' | 'bed' | 'cooking';
 export type NodeKind = 'tree' | 'stone' | 'berries';
-export type WorkType = 'plants' | 'haul' | 'build';
-export type JobKind = 'chop' | 'gather' | 'haul' | 'deliver' | 'build' | 'eat' | 'sleep' | 'move';
+export type WorkType = 'plants' | 'haul' | 'build' | 'cook';
+export type JobKind =
+  | 'chop'
+  | 'gather'
+  | 'haul'
+  | 'deliver'
+  | 'build'
+  | 'eat'
+  | 'sleep'
+  | 'move'
+  | 'sow'
+  | 'harvest'
+  | 'cook'
+  | 'deconstruct';
 export interface Stack {
   resource: Resource;
   quantity: number;
+  foodType?: FoodType;
 }
 export interface Item extends Point, Stack {
   id: string;
@@ -21,9 +35,15 @@ export interface ResourceNode extends Point {
   designated: boolean;
   work: number;
 }
+export interface Crop extends Point {
+  id: string;
+  kind: 'grain';
+  growth: number;
+}
 export interface Building extends Point {
   id: string;
   kind: BuildingKind;
+  deconstructing?: boolean;
 }
 export interface Blueprint extends Building {
   delivered: number;
@@ -38,6 +58,7 @@ export interface Job {
   phase: 'source' | 'target';
   progress: number;
   keys: string[];
+  amount?: number;
 }
 export interface Pawn extends Point {
   id: string;
@@ -65,6 +86,8 @@ export interface World {
   nextId: number;
   terrain: Terrain[];
   nodes: ResourceNode[];
+  crops: Crop[];
+  growingZones: number[];
   items: Item[];
   buildings: Building[];
   blueprints: Blueprint[];
@@ -76,4 +99,6 @@ export type Command =
   | { type: 'designate'; points: Point[]; cancel?: boolean }
   | { type: 'blueprint'; points: Point[]; kind: BuildingKind }
   | { type: 'stockpile'; points: Point[] }
+  | { type: 'growing'; points: Point[]; cancel?: boolean }
+  | { type: 'deconstruct'; points: Point[] }
   | { type: 'priority'; pawnId: string; work: WorkType; value: number };

@@ -52,8 +52,11 @@ Saves belong to the **browser profile and origin**, including port. A LAN addres
 - **Done** exits the tool. One finger pans in inspect mode; two fingers pan and pinch in any mode. Mouse dragging and wheel zoom work on desktop.
 - Tap an object for information and context actions. Tap a colonist portrait to select and focus them.
 - **Work:** tap a priority to cycle **1 → 2 → 3 → 4 → off**. Skill is shown below. Eating and resting override normal work.
-- **Orders → Cancel plans:** remove tree orders, unfinished blueprints, or stockpile cells. Delivered and carried materials are retained. Completed buildings cannot yet be deconstructed.
+- **Orders → Cancel plans:** remove tree orders, unfinished blueprints, or stockpile cells. Delivered and carried materials are retained. Completed structures can be deconstructed from their context panel.
 - Use **pause / 1× / 2× / 4×** freely. Management screens do not automatically pause the colony.
+- **Architect → Growing zone:** drag over soil or fertile ground. Colonists with Gather/Plants work enabled sow grain, tend it, harvest mature crops, and create physical raw food.
+- **Architect → Cooking station:** place and build one with delivered wood. A cook uses four raw food to make one physical meal; hungry colonists prefer meals and restore more hunger from them.
+- Select a completed wall, door, bed, or cooking station and choose **Deconstruct**. A builder works on it and returns 60% of its wood as a physical stack.
 
 Resource totals count items on the ground plus carried items. Delivered construction material is committed to its blueprint and no longer included in those totals. No material is deducted when a blueprint is placed. Leave doorways through walls so colonists can reach food and work.
 

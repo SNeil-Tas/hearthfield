@@ -6,7 +6,7 @@ export function gestureTiles(start: Point, end: Point, tool: Tool): Point[] {
   const a = { x: Math.round(start.x), y: Math.round(start.y) },
     b = { x: Math.round(end.x), y: Math.round(end.y) };
   const result: Point[] = [];
-  if (tool === 'bed' || tool === 'door') return [b];
+  if (tool === 'bed' || tool === 'door' || tool === 'cooking') return [b];
   if (tool === 'wall') {
     if (Math.abs(a.x - b.x) >= Math.abs(a.y - b.y)) b.y = a.y;
     else b.x = a.x;

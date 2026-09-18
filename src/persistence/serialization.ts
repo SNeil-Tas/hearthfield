@@ -4,7 +4,7 @@ import { interruptJob } from '../sim/jobs';
 import type { World } from '../sim/types';
 
 export interface SaveEnvelope {
-  version: 1;
+  version: 1 | 2;
   savedAt: number;
   checksum: string;
   payload: string;
@@ -16,7 +16,21 @@ export function checksum(text: string) {
 }
 export function encode(w: World): SaveEnvelope {
   const payload = JSON.stringify(w);
-  return { version: 1, savedAt: Date.now(), checksum: checksum(payload), payload };
+  return { version: 2, savedAt: Date.now(), checksum: checksum(payload), payload };
+}
+function migrate(world: any, version: 1 | 2) {
+  if (version === 1) {
+    world.crops ??= [];
+    world.growingZones ??= [];
+    for (const pawn of world.pawns ?? []) {
+      pawn.skills ??= {};
+      pawn.priorities ??= {};
+      pawn.skills.cook ??= 3;
+      pawn.priorities.cook ??= 2;
+    }
+    for (const item of world.items ?? []) if (item.resource === 'food') item.foodType ??= 'raw';
+  }
+  return world;
 }
 export function validateWorld(value: unknown): asserts value is World {
   if (!value || typeof value !== 'object') throw new Error('Save has no world.');
@@ -36,6 +50,8 @@ export function validateWorld(value: unknown): asserts value is World {
   for (const name of [
     'terrain',
     'nodes',
+    'crops',
+    'growingZones',
     'items',
     'buildings',
     'blueprints',
@@ -50,7 +66,14 @@ export function validateWorld(value: unknown): asserts value is World {
   for (const e of [...w.nodes, ...w.items, ...w.buildings, ...w.blueprints])
     if (!e || !Number.isInteger(e.x) || !Number.isInteger(e.y))
       throw new Error('Invalid tile position.');
-  const entities = [...w.nodes, ...w.items, ...w.buildings, ...w.blueprints, ...w.pawns];
+  const entities = [
+    ...w.nodes,
+    ...w.crops,
+    ...w.items,
+    ...w.buildings,
+    ...w.blueprints,
+    ...w.pawns,
+  ];
   for (const e of entities) {
     if (
       !e ||
@@ -71,13 +94,27 @@ export function validateWorld(value: unknown): asserts value is World {
       !finite(n.work, 0, 1000)
     )
       throw new Error('Invalid resource node.');
+  if (
+    w.crops.some(
+      (c) =>
+        !/^crop-\d+$/.test(c.id) ||
+        !Number.isInteger(c.x) ||
+        !Number.isInteger(c.y) ||
+        c.kind !== 'grain' ||
+        !finite(c.growth, 0, 1.25),
+    ) ||
+    w.growingZones.some((k) => !integer(k, 0, w.width * w.height - 1))
+  )
+    throw new Error('Invalid agriculture.');
   for (const b of [...w.buildings, ...w.blueprints])
     if (!Object.hasOwn(BUILDINGS, b.kind)) throw new Error('Invalid building.');
   for (const b of w.blueprints)
     if (!integer(b.delivered, 0, BUILDINGS[b.kind].cost) || !finite(b.work, 0, 1000000))
       throw new Error('Invalid blueprint.');
-  const validStack = (i: { resource: string; quantity: number }) =>
-    ['wood', 'stone', 'food'].includes(i.resource) && integer(i.quantity, 1, 100000);
+  const validStack = (i: { resource: string; quantity: number; foodType?: string }) =>
+    ['wood', 'stone', 'food'].includes(i.resource) &&
+    integer(i.quantity, 1, 100000) &&
+    (i.resource !== 'food' || !i.foodType || ['raw', 'meal'].includes(i.foodType));
   if (
     w.items.some((i) => !validStack(i)) ||
     w.stockpiles.some((k) => !integer(k, 0, w.width * w.height - 1))
@@ -89,7 +126,7 @@ export function validateWorld(value: unknown): asserts value is World {
       throw new Error('Invalid colonist identity.');
     if (['health', 'hunger', 'rest', 'mood'].some((k) => !finite(p[k as 'health'], 0, 100)))
       throw new Error('Invalid needs.');
-    for (const type of ['plants', 'build', 'haul'] as const)
+    for (const type of ['plants', 'build', 'haul', 'cook'] as const)
       if (
         !p.skills ||
         !p.priorities ||
@@ -113,7 +150,8 @@ export function validateWorld(value: unknown): asserts value is World {
 export function decode(raw: unknown): { world: World; savedAt: number } {
   if (!raw || typeof raw !== 'object') throw new Error('Unrecognised save.');
   const e = raw as SaveEnvelope;
-  if (e.version !== 1) throw new Error('This save needs a different game version.');
+  if (e.version !== 1 && e.version !== 2)
+    throw new Error('This save needs a different game version.');
   if (
     typeof e.payload !== 'string' ||
     e.payload.length > 10000000 ||
@@ -121,7 +159,7 @@ export function decode(raw: unknown): { world: World; savedAt: number } {
     !Number.isFinite(e.savedAt)
   )
     throw new Error('Save integrity check failed.');
-  const world: unknown = JSON.parse(e.payload);
+  const world: unknown = migrate(JSON.parse(e.payload), e.version);
   validateWorld(world);
   // Jobs are ephemeral. Resume from physical state, releasing all locks and dropping cargo.
   // This also makes future scheduler migrations independent of the persistent schema.

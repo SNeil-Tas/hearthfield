@@ -134,7 +134,9 @@ export class Interface {
       wall: 'Wall · Drag a line · 5 wood each',
       door: 'Door · Tap to place · 8 wood',
       bed: 'Bed · Tap to place · 10 wood',
+      cooking: 'Cooking station · Tap to place · 12 wood',
       stockpile: 'Stockpile · Drag an area',
+      grow: 'Growing zone · Drag fertile ground',
     };
     const hintText =
       ui.tool === 'inspect'

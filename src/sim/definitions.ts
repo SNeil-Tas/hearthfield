@@ -38,6 +38,13 @@ export const BUILDINGS: Record<
     blocks: false,
     description: 'A comfortable place to rest. Faster recovery than sleeping outside.',
   },
+  cooking: {
+    label: 'Cooking station',
+    cost: 12,
+    work: 8,
+    blocks: false,
+    description: 'Turns four raw food into one satisfying meal.',
+  },
 };
 export const NODES: Record<
   NodeKind,
@@ -47,7 +54,12 @@ export const NODES: Record<
   stone: { label: 'Stone outcrop', resource: 'stone', yield: 12, work: 7 },
   berries: { label: 'Berry bush', resource: 'food', yield: 14, work: 3 },
 };
-export const WORK: Record<WorkType, string> = { plants: 'Gather', build: 'Build', haul: 'Haul' };
+export const WORK: Record<WorkType, string> = {
+  plants: 'Gather',
+  build: 'Build',
+  haul: 'Haul',
+  cook: 'Cook',
+};
 export const JOB_LABELS = {
   chop: 'Cutting timber',
   gather: 'Gathering',
@@ -57,4 +69,10 @@ export const JOB_LABELS = {
   eat: 'Finding food',
   sleep: 'Resting',
   move: 'Making room',
+  sow: 'Sowing crops',
+  harvest: 'Harvesting crops',
+  cook: 'Cooking meals',
+  deconstruct: 'Taking apart',
 };
+export const CROP_GROWTH_TICKS = 2400;
+export const COOKING_INPUT = 4;

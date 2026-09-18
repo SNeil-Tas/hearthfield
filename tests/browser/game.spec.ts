@@ -53,6 +53,57 @@ test('landscape play, management, placement, save/reload and narrow resize', asy
   expect(errors).toEqual([]);
 });
 
+test('survival tools designate a growing zone, place a cooking station and deconstruct a building', async ({
+  page,
+}) => {
+  await start(page);
+  await page.getByRole('button', { name: 'Architect', exact: true }).click();
+  await page.getByRole('button', { name: /Growing zone/ }).click();
+  const zone = await page.evaluate(() =>
+    (window as any).colonyDebug.camera.screen({ x: 36, y: 36 }),
+  );
+  await page.touchscreen.tap(zone.x, zone.y);
+  await expect
+    .poll(() =>
+      page.evaluate(() => (window as any).colonyDebug.simulation.world.growingZones.length),
+    )
+    .toBe(1);
+  await page.getByRole('button', { name: 'Architect', exact: true }).click();
+  await page.getByRole('button', { name: /Cooking station 12 wood/ }).click();
+  const station = await page.evaluate(() =>
+    (window as any).colonyDebug.camera.screen({ x: 37, y: 36 }),
+  );
+  await page.touchscreen.tap(station.x, station.y);
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        (window as any).colonyDebug.simulation.world.blueprints.some(
+          (b: any) => b.kind === 'cooking',
+        ),
+      ),
+    )
+    .toBe(true);
+  await page.getByRole('button', { name: 'Done' }).click();
+  await page.evaluate(() => {
+    const w = (window as any).colonyDebug.simulation.world;
+    w.buildings.push({ id: 'building-test', x: 34, y: 36, kind: 'wall' });
+  });
+  const wall = await page.evaluate(() =>
+    (window as any).colonyDebug.camera.screen({ x: 34, y: 36 }),
+  );
+  await page.touchscreen.tap(wall.x, wall.y);
+  await expect(page.getByRole('button', { name: /Deconstruct/ })).toBeVisible();
+  await page.getByRole('button', { name: /Deconstruct/ }).click();
+  expect(
+    await page.evaluate(
+      () =>
+        (window as any).colonyDebug.simulation.world.buildings.find(
+          (b: any) => b.id === 'building-test',
+        ).deconstructing,
+    ),
+  ).toBe(true);
+});
+
 test('tap/drag distinction, two-finger pinch, cancellation and time controls', async ({ page }) => {
   await start(page);
   const before = await page.evaluate(() => ({ ...(window as any).colonyDebug.camera }));

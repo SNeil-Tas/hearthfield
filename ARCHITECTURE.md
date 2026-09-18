@@ -87,3 +87,15 @@ Web Locks hold an exclusive writer for the page lifetime where supported; a comp
 Production builds generate a service worker with exact hashed asset filenames. The worker serves the precached shell offline, scopes cleanup to this app's caches, and does not force an update into a running colony. Static asset matches ignore `Vary` because module and precache requests differ in Origin headers, although the same-origin immutable file contents do not. A real Chromium offline reload verifies this path.
 
 The static deployment remains a Vite build published by GitHub Pages. `index.html`, the manifest, service-worker registration, and generated asset references use relative paths so a project-page subpath works without changing simulation or persistence code. Each production build emits a fresh worker cache name; registration requests an update, while the worker waits for old tabs to close before claiming the next launch.
+
+## Survival loop additions
+
+Growing zones are persistent tile keys. A zone creates a sow candidate for an empty tile; sowing creates a persistent `Crop` entity. Crop growth advances every ten simulation ticks toward a 2,400-tick maturity period, independent of rendering. Mature crops create harvest candidates and yield physical raw food stacks. The existing Plants/Gather work priority, paths, and reservations govern both sowing and harvesting.
+
+Food remains a physical `food` resource with an optional `foodType`: legacy and harvested food is `raw`, while cooking produces `meal`. A cooking station is an ordinary blueprint/building. Its automatic job reserves one raw stack and the station, consumes four raw units over time, and drops one meal item. Meals are ranked ahead of raw food for hungry colonists and restore more hunger. The station stops automatically when six meals are available.
+
+Completed buildings can be marked for deconstruction. The existing Build work path reserves the building, removes it after work completes, and drops 60% of its wood cost as a normal physical stack. Unfinished blueprints still use their separate cancellation/refund path.
+
+Shelter is a derived cache, recalculated when topology changes. A boundary flood fill treats walls and doors as room boundaries; tiles not reached from the map edge are enclosed. A bed in an enclosed tile gives the strongest rest recovery, an outdoor bed gives the middle rate, and ground sleep remains the weakest. This is intentionally a small shelter consequence rather than a temperature or room simulation.
+
+Save envelopes are version 2. Loading version 1 adds empty agriculture fields, raw food defaults, and default cooking skills/priorities before normal validation. Job state remains ephemeral across loading, so reservations and carried ingredients are reconstructed safely.

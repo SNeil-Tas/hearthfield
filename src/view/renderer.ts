@@ -76,6 +76,30 @@ export class Renderer {
       c.lineWidth = 1;
       c.strokeRect(p.x - z / 2 + 1, p.y - z / 2 + 1, z - 2, z - 2);
     }
+    for (const key of w.growingZones) {
+      const tile = { x: key % w.width, y: Math.floor(key / w.width) };
+      if (!visible(tile)) continue;
+      const p = cam.screen(tile);
+      c.fillStyle = '#a9bd7440';
+      c.fillRect(p.x - z / 2 + 1, p.y - z / 2 + 1, z - 2, z - 2);
+      c.strokeStyle = '#d8d38a99';
+      c.strokeRect(p.x - z / 2 + 1, p.y - z / 2 + 1, z - 2, z - 2);
+    }
+    for (const crop of w.crops)
+      if (visible(crop)) {
+        const p = cam.screen(crop);
+        const height = z * (0.12 + crop.growth * 0.32);
+        c.strokeStyle = crop.growth >= 1 ? '#f2d47e' : '#9fbd68';
+        c.lineWidth = Math.max(1.5, z * 0.08);
+        c.beginPath();
+        c.moveTo(p.x, p.y + z * 0.25);
+        c.lineTo(p.x, p.y + z * 0.25 - height);
+        c.moveTo(p.x, p.y + z * 0.05);
+        c.lineTo(p.x - z * 0.16, p.y - z * 0.08);
+        c.moveTo(p.x, p.y - z * 0.02);
+        c.lineTo(p.x + z * 0.16, p.y - z * 0.14);
+        c.stroke();
+      }
     for (const b of w.blueprints)
       if (visible(b)) {
         const p = cam.screen(b);
@@ -99,7 +123,21 @@ export class Renderer {
           );
         }
       }
-    for (const b of w.buildings) if (visible(b)) this.building(b.kind, cam.screen(b), z);
+    for (const b of w.buildings)
+      if (visible(b)) {
+        this.building(b.kind, cam.screen(b), z);
+        if (b.deconstructing) {
+          const p = cam.screen(b);
+          c.strokeStyle = '#efaa8a';
+          c.lineWidth = 2;
+          c.beginPath();
+          c.moveTo(p.x - z * 0.35, p.y - z * 0.35);
+          c.lineTo(p.x + z * 0.35, p.y + z * 0.35);
+          c.moveTo(p.x + z * 0.35, p.y - z * 0.35);
+          c.lineTo(p.x - z * 0.35, p.y + z * 0.35);
+          c.stroke();
+        }
+      }
     for (const item of w.items)
       if (visible(item)) {
         const p = cam.screen(item);
@@ -301,6 +339,13 @@ export class Renderer {
       c.fillRect(p.x - z * 0.29, p.y - z * 0.1, z * 0.58, z * 0.45);
       c.fillStyle = '#e9dfb9';
       c.fillRect(p.x - z * 0.26, p.y - z * 0.33, z * 0.52, z * 0.2);
+    } else if (kind === 'cooking') {
+      c.fillStyle = '#765b46';
+      c.fillRect(p.x - z * 0.4, p.y - z * 0.35, z * 0.8, z * 0.7);
+      c.fillStyle = '#d8b56f';
+      this.circle(p.x, p.y - z * 0.12, z * 0.18);
+      c.fillStyle = '#b7c9a3';
+      c.fillRect(p.x - z * 0.22, p.y + z * 0.18, z * 0.44, z * 0.08);
     } else {
       c.fillStyle = kind === 'wall' ? '#a9926c' : '#6b5941';
       c.fillRect(p.x - z * 0.45, p.y - z * 0.4, z * 0.9, z * 0.8);

@@ -37,6 +37,7 @@ export function assignJob(
       phase: c.source ? 'source' : 'target',
       progress: 0,
       keys: c.keys,
+      amount: c.amount,
     };
     return;
   }

@@ -163,6 +163,14 @@ async function bootstrap() {
           });
         break;
       }
+      case 'deconstruct': {
+        const building = sim.world.buildings.find((b) => b.id === ui.selectedId);
+        if (building) {
+          sim.command({ type: 'deconstruct', points: [building] });
+          void save();
+        }
+        break;
+      }
       case 'priority': {
         const [pawnId, work] = value.split(':');
         const pawn = sim.world.pawns.find((p) => p.id === pawnId);
@@ -250,6 +258,7 @@ async function bootstrap() {
     if (ui.tool === 'gather' || ui.tool === 'cancel')
       changed = sim.command({ type: 'designate', points, cancel: ui.tool === 'cancel' });
     else if (ui.tool === 'stockpile') changed = sim.command({ type: 'stockpile', points });
+    else if (ui.tool === 'grow') changed = sim.command({ type: 'growing', points });
     else if (ui.tool !== 'inspect')
       changed = sim.command({ type: 'blueprint', points, kind: ui.tool });
     if (!changed)

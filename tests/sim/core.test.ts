@@ -186,7 +186,7 @@ describe('autonomous physical logistics', () => {
     const w = flatWorld();
     const sim = new Simulation(w);
     const occupant = w.pawns[0]!;
-    occupant.priorities = { plants: 0, build: 0, haul: 0 };
+    occupant.priorities = { plants: 0, build: 0, haul: 0, cook: 0 };
     const location = { x: occupant.x, y: occupant.y };
     drop(w, { x: 6, y: 5 }, 'wood', 5);
     sim.command({ type: 'blueprint', kind: 'wall', points: [location] });

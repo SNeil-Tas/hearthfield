@@ -1,5 +1,6 @@
 import type { Point } from '../sim/types';
-export type Tool = 'inspect' | 'gather' | 'cancel' | 'wall' | 'door' | 'bed' | 'stockpile';
+export type Tool =
+  'inspect' | 'gather' | 'cancel' | 'wall' | 'door' | 'bed' | 'cooking' | 'stockpile' | 'grow';
 export type Panel = 'architect' | 'orders' | 'work' | 'journal' | 'settings' | null;
 export interface UIState {
   tool: Tool;

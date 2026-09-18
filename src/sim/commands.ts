@@ -16,7 +16,33 @@ export function applyCommand(w: World, command: Command, reservations: Reservati
   let changed = 0;
   for (const p of command.points) {
     if (!Number.isInteger(p.x) || !Number.isInteger(p.y) || !inside(w, p)) continue;
-    if (command.type === 'designate') {
+    if (command.type === 'growing') {
+      const key = tileKey(w, p);
+      const valid =
+        walkable(w, p) &&
+        ['soil', 'fertile'].includes(w.terrain[key]!) &&
+        !w.nodes.some((n) => sameTile(n, p)) &&
+        !w.buildings.some((b) => sameTile(b, p)) &&
+        !w.blueprints.some((b) => sameTile(b, p)) &&
+        !w.items.some((item) => sameTile(item, p));
+      if (command.cancel) {
+        if (w.growingZones.includes(key)) {
+          w.growingZones = w.growingZones.filter((k) => k !== key);
+          const crop = w.crops.find((c) => sameTile(c, p));
+          if (crop) w.crops = w.crops.filter((c) => c.id !== crop.id);
+          changed++;
+        }
+      } else if (valid && !w.growingZones.includes(key)) {
+        w.growingZones.push(key);
+        changed++;
+      }
+    } else if (command.type === 'deconstruct') {
+      const building = w.buildings.find((b) => sameTile(b, p));
+      if (building && !building.deconstructing) {
+        building.deconstructing = true;
+        changed++;
+      }
+    } else if (command.type === 'designate') {
       const node = w.nodes.find((n) => sameTile(n, p));
       if (node && node.designated !== !command.cancel) {
         node.designated = !command.cancel;
@@ -40,6 +66,12 @@ export function applyCommand(w: World, command: Command, reservations: Reservati
           for (const pawn of w.pawns)
             if (pawn.job?.kind === 'haul' && sameTile(pawn.job.destination, p))
               interruptJob(w, pawn, reservations);
+        }
+        if (w.growingZones.includes(key)) {
+          w.growingZones = w.growingZones.filter((k) => k !== key);
+          const crop = w.crops.find((c) => sameTile(c, p));
+          if (crop) w.crops = w.crops.filter((c) => c.id !== crop.id);
+          changed++;
         }
       }
     } else if (command.type === 'stockpile') {

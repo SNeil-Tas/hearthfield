@@ -2,7 +2,7 @@ import { BUILDINGS, DAY_TICKS, JOB_LABELS, NODES, TERRAIN, WORK } from '../sim/d
 import type { World } from '../sim/types';
 import type { Panel, UIState } from './state';
 import { escapeHTML as esc, icon } from './icons';
-import { tileKey } from '../sim/world';
+import { foodType, resourceTotal, shelteredTiles, tileKey } from '../sim/world';
 
 const toolButton = (tool: string, label: string, detail: string, symbol = tool) =>
   `<button class="catalogue-item" data-action="tool" data-value="${tool}"><span class="catalogue-icon">${icon(symbol)}</span><span><strong>${label}</strong><small>${detail}</small></span><span class="chevron">›</span></button>`;
@@ -23,7 +23,7 @@ export function panelHTML(panel: Panel, w: World, debug: boolean) {
           )
           .join(
             '',
-          )}${toolButton('stockpile', 'Stockpile', 'Drag an area · Store physical supplies')}</div><p class="panel-note">Place a plan. Your colonists deliver the materials and build it.</p>`
+          )}${toolButton('stockpile', 'Stockpile', 'Drag an area · Store physical supplies')}${toolButton('grow', 'Growing zone', 'Drag fertile ground · Sow grain', 'leaf')}</div><p class="panel-note">Place a plan. Your colonists deliver the materials and build it.</p>`
       );
     case 'orders':
       return (
@@ -77,7 +77,8 @@ export function contextHTML(w: World, ui: UIState, owner?: string) {
   const bp = w.blueprints.find((e) => e.id === ui.selectedId);
   const b = w.buildings.find((e) => e.id === ui.selectedId);
   const item = w.items.find((e) => e.id === ui.selectedId);
-  const e = p ?? node ?? bp ?? b ?? item;
+  const crop = w.crops.find((e) => e.id === ui.selectedId);
+  const e = p ?? node ?? bp ?? b ?? item ?? crop;
   const close = `<button class="icon-button context-close" data-action="deselect" aria-label="Close selection">${icon('close')}</button>`;
   let content = '';
   if (p) {
@@ -89,11 +90,34 @@ export function contextHTML(w: World, ui: UIState, owner?: string) {
     content = `<span class="eyebrow">${node.designated ? 'MARKED FOR GATHERING' : 'NATURAL RESOURCE'}</span><h3>${def.label}</h3><p>${def.yield} ${def.resource} when gathered.</p><button class="primary" data-action="node" data-value="${node.designated ? 'cancel' : 'gather'}">${icon(node.designated ? 'close' : 'orders')}${node.designated ? 'Cancel order' : node.kind === 'tree' ? 'Chop tree' : 'Gather'}</button>`;
   } else if (bp) {
     const def = BUILDINGS[bp.kind];
-    content = `<span class="eyebrow">CONSTRUCTION PLAN</span><h3>${def.label}</h3><p>${bp.delivered} / ${def.cost} wood delivered<br>${bp.delivered < def.cost ? 'Waiting for material delivery' : `Building · ${Math.min(100, Math.round((bp.work / def.work) * 100))}%`}</p><button class="text-button" data-action="cancel-blueprint">Cancel blueprint</button>`;
+    const needed = def.cost - bp.delivered;
+    const buildEnabled = w.pawns.some((pawn) => pawn.priorities.build > 0 && pawn.skills.build > 0);
+    const status =
+      bp.delivered < def.cost
+        ? resourceTotal(w, 'wood') < needed
+          ? `Waiting for ${needed} wood`
+          : !buildEnabled
+            ? 'No colonist has Build enabled'
+            : 'Waiting for material delivery'
+        : `Building · ${Math.min(100, Math.round((bp.work / def.work) * 100))}%`;
+    content = `<span class="eyebrow">CONSTRUCTION PLAN</span><h3>${def.label}</h3><p>${bp.delivered} / ${def.cost} wood delivered<br>${status}</p><button class="text-button" data-action="cancel-blueprint">Cancel blueprint</button>`;
   } else if (b) {
     content = `<span class="eyebrow">COMPLETED BUILDING</span><h3>${BUILDINGS[b.kind].label}</h3><p>${BUILDINGS[b.kind].description}</p>`;
+    if (b.kind === 'bed')
+      content += `<p>${shelteredTiles(w).has(tileKey(w, b)) ? 'Sheltered bed · best rest' : 'Outdoor bed · slower rest'}</p>`;
+    if (b.kind === 'cooking') {
+      const raw = w.items
+        .filter((item) => item.resource === 'food' && foodType(item) === 'raw')
+        .reduce((total, item) => total + item.quantity, 0);
+      content += `<p>${raw < 4 ? 'Waiting for ingredients' : w.pawns.some((pawn) => pawn.priorities.cook > 0) ? 'Ready to cook simple meals' : 'No colonist has Cook enabled'}</p>`;
+    }
+    content += b.deconstructing
+      ? '<p>Deconstruction is underway.</p>'
+      : '<button class="text-button" data-action="deconstruct">Deconstruct <span>↗</span></button>';
   } else if (item) {
-    content = `<span class="eyebrow">PHYSICAL SUPPLIES</span><h3>${item.quantity} ${item.resource}</h3><p>${w.stockpiles.includes(tileKey(w, item)) ? 'In a stockpile' : 'On the ground · Awaiting hauling'}</p>`;
+    content = `<span class="eyebrow">PHYSICAL SUPPLIES</span><h3>${item.quantity} ${item.foodType === 'meal' ? 'meal' : item.resource}</h3><p>${w.stockpiles.includes(tileKey(w, item)) ? 'In a stockpile' : 'On the ground · Awaiting hauling'}</p>`;
+  } else if (crop) {
+    content = `<span class="eyebrow">GRAIN CROP</span><h3>${crop.growth >= 1 ? 'Ready to harvest' : crop.growth < 0.1 ? 'Freshly sown' : 'Growing'}</h3><p>${Math.round(crop.growth * 100)}% grown · Plants work will tend it.</p>`;
   } else if (ui.selectedTile) {
     const terrain = w.terrain[tileKey(w, ui.selectedTile)];
     if (!terrain) return '';

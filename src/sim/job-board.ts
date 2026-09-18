@@ -1,6 +1,6 @@
 import { BUILDINGS } from './definitions';
 import type { Job, Pawn, Point, WorkType, World } from './types';
-import { distance, tileKey, sameTile } from './world';
+import { distance, tileKey, sameTile, foodType } from './world';
 
 export interface Candidate {
   kind: Job['kind'];
@@ -11,6 +11,7 @@ export interface Candidate {
   adjacent: boolean;
   keys: string[];
   work?: WorkType;
+  amount?: number;
   score: number;
 }
 export function workCandidates(w: World): Candidate[] {
@@ -26,6 +27,30 @@ export function workCandidates(w: World): Candidate[] {
         work: 'plants',
         score: 0,
       });
+  for (const key of w.growingZones) {
+    const tile = { x: key % w.width, y: Math.floor(key / w.width) };
+    const crop = w.crops.find((c) => sameTile(c, tile));
+    if (!crop)
+      candidates.push({
+        kind: 'sow',
+        targetId: `zone:${key}`,
+        destination: tile,
+        adjacent: false,
+        keys: [`grow:${key}`],
+        work: 'plants',
+        score: 2,
+      });
+    else if (crop.growth >= 1)
+      candidates.push({
+        kind: 'harvest',
+        targetId: crop.id,
+        destination: crop,
+        adjacent: false,
+        keys: [crop.id],
+        work: 'plants',
+        score: -2,
+      });
+  }
   for (const bp of w.blueprints) {
     if (bp.delivered >= BUILDINGS[bp.kind].cost)
       candidates.push({
@@ -51,6 +76,40 @@ export function workCandidates(w: World): Candidate[] {
             work: 'build',
             score: distance(item, bp) * 0.3,
           });
+  }
+  for (const building of w.buildings) {
+    if (building.deconstructing)
+      candidates.push({
+        kind: 'deconstruct',
+        targetId: building.id,
+        destination: building,
+        adjacent: true,
+        keys: [building.id],
+        work: 'build',
+        score: 1,
+      });
+  }
+  for (const station of w.buildings.filter((b) => b.kind === 'cooking')) {
+    const meals = w.items
+      .filter((item) => item.resource === 'food' && foodType(item) === 'meal')
+      .reduce((total, item) => total + item.quantity, 0);
+    if (meals >= 6) continue;
+    for (const item of w.items)
+      if (item.resource === 'food' && foodType(item) === 'raw' && item.quantity >= 4) {
+        candidates.push({
+          kind: 'cook',
+          sourceId: item.id,
+          targetId: station.id,
+          source: item,
+          destination: station,
+          adjacent: true,
+          keys: [item.id, station.id],
+          work: 'cook',
+          score: 4,
+          amount: 4,
+        });
+        break;
+      }
   }
   const stored = new Set(w.stockpiles);
   const space = w.stockpiles
@@ -92,7 +151,7 @@ export function needCandidates(w: World, pawn: Pawn): Candidate[] {
           destination: item,
           adjacent: false,
           keys: [item.id],
-          score: -1000 + distance(pawn, item),
+          score: -1000 + distance(pawn, item) + (foodType(item) === 'meal' ? -40 : 0),
         });
   // Food in the wild remains an autonomous fallback when stores are exhausted.
   if (pawn.hunger < 30 && !w.items.some((i) => i.resource === 'food'))

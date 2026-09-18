@@ -3,11 +3,11 @@ import { emit } from './events';
 import { findPath } from './pathfinding';
 import { Reservations } from './reservations';
 import type { Pawn, World } from './types';
-import { drop, nextId, sameTile, tileKey } from './world';
+import { drop, dropFood, foodType, nextId, sameTile, tileKey } from './world';
 
 export function interruptJob(w: World, pawn: Pawn, reservations: Reservations) {
   if (pawn.carrying) {
-    drop(w, pawn, pawn.carrying.resource, pawn.carrying.quantity);
+    drop(w, pawn, pawn.carrying.resource, pawn.carrying.quantity, pawn.carrying.foodType);
     pawn.carrying = null;
   }
   pawn.x = Math.round(pawn.x);
@@ -20,6 +20,7 @@ export function advanceJob(
   pawn: Pawn,
   reservations: Reservations,
   grid: Uint8Array,
+  sheltered: Set<number>,
 ): boolean {
   const job = pawn.job;
   if (!job) return false;
@@ -30,9 +31,13 @@ export function advanceJob(
   const cancel = () => interruptJob(w, pawn, reservations);
   const node = w.nodes.find((n) => n.id === job.targetId);
   const bp = w.blueprints.find((b) => b.id === job.targetId);
+  const crop = w.crops.find((c) => c.id === job.targetId);
+  const building = w.buildings.find((b) => b.id === job.targetId);
   if (
     (['build', 'deliver'].includes(job.kind) && !bp) ||
-    (['chop', 'gather'].includes(job.kind) && !node)
+    (['chop', 'gather'].includes(job.kind) && !node) ||
+    (job.kind === 'harvest' && !crop) ||
+    (['cook', 'deconstruct'].includes(job.kind) && !building)
   ) {
     cancel();
     return false;
@@ -63,17 +68,21 @@ export function advanceJob(
       cancel();
       return false;
     }
-    const amount = Math.min(12, item.quantity, bp ? BUILDINGS[bp.kind].cost - bp.delivered : 12);
+    const amount = Math.min(
+      job.amount ?? 12,
+      item.quantity,
+      bp ? BUILDINGS[bp.kind].cost - bp.delivered : 12,
+    );
     if (amount <= 0) {
       cancel();
       return false;
     }
-    const path = findPath(w, pawn, job.destination, job.kind === 'deliver', grid);
+    const path = findPath(w, pawn, job.destination, ['deliver', 'cook'].includes(job.kind), grid);
     if (path === null) {
       cancel();
       return false;
     }
-    pawn.carrying = { resource: item.resource, quantity: amount };
+    pawn.carrying = { resource: item.resource, quantity: amount, foodType: foodType(item) };
     item.quantity -= amount;
     if (!item.quantity) w.items = w.items.filter((i) => i.id !== item.id);
     job.path = path;
@@ -94,6 +103,33 @@ export function advanceJob(
         drop(w, node, def.resource, def.yield);
         w.nodes = w.nodes.filter((n) => n.id !== node.id);
         emit(w, `${pawn.name} gathered ${def.yield} ${def.resource}.`, 'success');
+        finish();
+        return true;
+      }
+      break;
+    }
+    case 'sow': {
+      const key = tileKey(w, job.destination);
+      if (w.growingZones.includes(key) && !w.crops.some((c) => sameTile(c, job.destination))) {
+        w.crops.push({
+          id: nextId(w, 'crop'),
+          x: job.destination.x,
+          y: job.destination.y,
+          kind: 'grain',
+          growth: 0,
+        });
+        emit(w, `${pawn.name} sowed a grain crop.`, 'info');
+      }
+      finish();
+      return true;
+    }
+    case 'harvest': {
+      if (!crop) break;
+      crop.growth += (TICK_SECONDS * (1 + pawn.skills.plants * 0.04)) / 3;
+      if (crop.growth >= 1.25) {
+        dropFood(w, crop, 8, 'raw');
+        w.crops = w.crops.filter((c) => c.id !== crop.id);
+        emit(w, `${pawn.name} harvested a grain crop.`, 'success');
         finish();
         return true;
       }
@@ -129,6 +165,34 @@ export function advanceJob(
       }
       break;
     }
+    case 'cook': {
+      if (!building || building.kind !== 'cooking' || !pawn.carrying) break;
+      job.progress += TICK_SECONDS;
+      if (job.progress >= 6) {
+        dropFood(w, building, 1, 'meal');
+        pawn.carrying = null;
+        emit(w, `${pawn.name} prepared a simple meal.`, 'success');
+        finish();
+        return true;
+      }
+      break;
+    }
+    case 'deconstruct': {
+      if (!building) break;
+      job.progress += TICK_SECONDS * (1 + pawn.skills.build * 0.06);
+      if (job.progress >= BUILDINGS[building.kind].work) {
+        w.buildings = w.buildings.filter((b) => b.id !== building.id);
+        drop(w, building, 'wood', Math.floor(BUILDINGS[building.kind].cost * 0.6));
+        emit(
+          w,
+          `${pawn.name} recovered materials from the ${BUILDINGS[building.kind].label.toLowerCase()}.`,
+          'success',
+        );
+        finish();
+        return true;
+      }
+      break;
+    }
     case 'eat': {
       const food = w.items.find((i) => i.id === job.sourceId);
       if (!food) {
@@ -138,14 +202,19 @@ export function advanceJob(
       if (job.progress >= 2) {
         food.quantity--;
         if (!food.quantity) w.items = w.items.filter((i) => i.id !== food.id);
-        pawn.hunger = Math.min(100, pawn.hunger + 65);
+        pawn.hunger = Math.min(100, pawn.hunger + (foodType(food) === 'meal' ? 92 : 65));
         emit(w, `${pawn.name} stopped for a meal.`);
         finish();
       }
       break;
     }
     case 'sleep': {
-      pawn.rest = Math.min(100, pawn.rest + TICK_SECONDS * (job.targetId ? 3.2 : 1.3));
+      const bed = job.targetId ? w.buildings.find((b) => b.id === job.targetId) : undefined;
+      const shelteredBed = !!bed && sheltered.has(tileKey(w, bed));
+      pawn.rest = Math.min(
+        100,
+        pawn.rest + TICK_SECONDS * (bed ? (shelteredBed ? 4.2 : 3.2) : 1.3),
+      );
       if (pawn.rest >= 95 || pawn.hunger < 18) finish();
       break;
     }
