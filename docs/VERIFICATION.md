@@ -35,7 +35,13 @@ The browser suite used Playwright 1.55.0 with Chromium 153.0.8010.12 (Playwright
 - Competing-tab write prevention and ownership after the original tab closes.
 - Held context actions surviving live status updates without being replaced under the pointer.
 
-The completed run passed all **9 tests in 22.2 seconds**. `npm run typecheck`, `npm test -- --run` (**17 tests in 3.33 seconds**), `npm run build`, `npm run verify:production`, and `npm run format:check` also passed. No GitHub deployment was performed.
+The completed run passed all **9 tests in 22.2 seconds**. `npm run typecheck`, `npm test -- --run` (**17 tests in 3.33 seconds**), `npm run build`, `npm run verify:production`, and `npm run format:check` also passed.
+
+## Published deployment
+
+The repository is [github.com/SNeil-Tas/hearthfield](https://github.com/SNeil-Tas/hearthfield). GitHub Pages deployment run [35306828769](https://github.com/SNeil-Tas/hearthfield/actions/runs/35306828769) passed the build and deploy jobs using [`.github/workflows/deploy-pages.yml`](../.github/workflows/deploy-pages.yml). The live site is [https://sneil-tas.github.io/hearthfield/](https://sneil-tas.github.io/hearthfield/).
+
+A read-only live smoke test returned HTTP 200, rendered three colonists, loaded the manifest and service worker with HTTP 200, detected relative hashed assets, and reported no page errors or failed requests. Physical Android testing remains the next gate.
 
 Screenshots are written to `test-results/`: `mobile-colony.png`, `mobile-work.png`, `offline-colony.png`, `desktop-colony.png`, `portrait-fallback.png`. The directory is ignored because these are regenerated outputs. A selected mobile view is retained in `docs/mobile-colony.png`.
 

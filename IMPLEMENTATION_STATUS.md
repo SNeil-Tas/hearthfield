@@ -36,6 +36,14 @@
 - `npm run format:check`: passed.
 - `npm run test:browser`: 9/9 Chromium tests passed in 22.2 seconds, including touch, phone-sized layouts, save/reload, offline startup, and multi-tab protection.
 
+## GitHub Pages deployment
+
+- Repository: [github.com/SNeil-Tas/hearthfield](https://github.com/SNeil-Tas/hearthfield).
+- Live HTTPS site: [sneil-tas.github.io/hearthfield](https://sneil-tas.github.io/hearthfield/).
+- Workflow: [`.github/workflows/deploy-pages.yml`](.github/workflows/deploy-pages.yml).
+- Deployment run `35306828769` passed its build and deploy jobs. A live smoke test returned HTTP 200, rendered three colonists, loaded the manifest and service worker, found relative hashed assets, and reported no page errors or failed requests.
+- Physical Android installation, offline launch, thermals, battery use, and background/reopen behavior remain pending.
+
 ## Verification scope
 
 - **Desktop verification:** simulation, persistence, build, formatting, and Chromium browser tests on the development PC.
