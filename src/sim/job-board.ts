@@ -1,0 +1,139 @@
+import { BUILDINGS } from './definitions';
+import type { Job, Pawn, Point, WorkType, World } from './types';
+import { distance, tileKey, sameTile } from './world';
+
+export interface Candidate {
+  kind: Job['kind'];
+  sourceId?: string;
+  targetId?: string;
+  destination: Point;
+  source?: Point;
+  adjacent: boolean;
+  keys: string[];
+  work?: WorkType;
+  score: number;
+}
+export function workCandidates(w: World): Candidate[] {
+  const candidates: Candidate[] = [];
+  for (const node of w.nodes)
+    if (node.designated)
+      candidates.push({
+        kind: node.kind === 'tree' ? 'chop' : 'gather',
+        targetId: node.id,
+        destination: node,
+        adjacent: true,
+        keys: [node.id],
+        work: 'plants',
+        score: 0,
+      });
+  for (const bp of w.blueprints) {
+    if (bp.delivered >= BUILDINGS[bp.kind].cost)
+      candidates.push({
+        kind: 'build',
+        targetId: bp.id,
+        destination: bp,
+        adjacent: true,
+        keys: [bp.id],
+        work: 'build',
+        score: -3,
+      });
+    else
+      for (const item of w.items)
+        if (item.resource === 'wood' && item.quantity > 0)
+          candidates.push({
+            kind: 'deliver',
+            sourceId: item.id,
+            targetId: bp.id,
+            source: item,
+            destination: bp,
+            adjacent: true,
+            keys: [bp.id, item.id],
+            work: 'build',
+            score: distance(item, bp) * 0.3,
+          });
+  }
+  const stored = new Set(w.stockpiles);
+  const space = w.stockpiles
+    .map((k) => ({ x: k % w.width, y: Math.floor(k / w.width) }))
+    .filter(
+      (p) =>
+        !w.blueprints.some((b) => sameTile(b, p)) &&
+        !w.buildings.some((b) => sameTile(b, p)) &&
+        w.items.filter((i) => sameTile(i, p)).reduce((n, i) => n + i.quantity, 0) < 48,
+    );
+  for (const item of w.items)
+    if (!stored.has(tileKey(w, item))) {
+      // Several destination choices allow haulers to work concurrently.
+      const destinations = [...space]
+        .sort((a, b) => distance(a, item) - distance(b, item))
+        .slice(0, 4);
+      for (const destination of destinations)
+        candidates.push({
+          kind: 'haul',
+          sourceId: item.id,
+          source: item,
+          destination,
+          adjacent: false,
+          keys: [item.id, `store:${tileKey(w, destination)}`],
+          work: 'haul',
+          score: distance(item, destination) * 0.2,
+        });
+    }
+  return candidates;
+}
+export function needCandidates(w: World, pawn: Pawn): Candidate[] {
+  const candidates: Candidate[] = [];
+  if (pawn.hunger < 38)
+    for (const item of w.items)
+      if (item.resource === 'food')
+        candidates.push({
+          kind: 'eat',
+          sourceId: item.id,
+          destination: item,
+          adjacent: false,
+          keys: [item.id],
+          score: -1000 + distance(pawn, item),
+        });
+  // Food in the wild remains an autonomous fallback when stores are exhausted.
+  if (pawn.hunger < 30 && !w.items.some((i) => i.resource === 'food'))
+    for (const node of w.nodes)
+      if (node.kind === 'berries')
+        candidates.push({
+          kind: 'gather',
+          targetId: node.id,
+          destination: node,
+          adjacent: true,
+          keys: [node.id],
+          score: -900 + distance(pawn, node),
+        });
+  if (pawn.rest < 28 && pawn.hunger > 12) {
+    for (const bed of w.buildings)
+      if (bed.kind === 'bed')
+        candidates.push({
+          kind: 'sleep',
+          targetId: bed.id,
+          destination: bed,
+          adjacent: false,
+          keys: [bed.id],
+          score: -800 + distance(pawn, bed),
+        });
+    candidates.push({
+      kind: 'sleep',
+      destination: { x: Math.round(pawn.x), y: Math.round(pawn.y) },
+      adjacent: false,
+      keys: [`sleep:${tileKey(w, pawn)}`],
+      score: -500,
+    });
+  }
+  return candidates;
+}
+export function rankCandidate(pawn: Pawn, candidate: Candidate) {
+  if (!candidate.work) return candidate.score;
+  const priority = pawn.priorities[candidate.work];
+  return priority === 0
+    ? Infinity
+    : priority * 100 +
+        distance(pawn, candidate.source ?? candidate.destination) +
+        candidate.score -
+        pawn.skills[candidate.work] * 2;
+}

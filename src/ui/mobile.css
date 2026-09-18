@@ -1,0 +1,481 @@
+@media (max-width: 1000px) {
+  .top-hud {
+    top: max(12px, env(safe-area-inset-top));
+    left: max(14px, env(safe-area-inset-left));
+    right: max(14px, env(safe-area-inset-right));
+    gap: 12px;
+  }
+  .brand {
+    gap: 7px;
+  }
+  .brand strong {
+    font-size: 23px;
+  }
+  .brand span {
+    display: none;
+  }
+  .brand > svg {
+    width: 26px;
+    height: 26px;
+  }
+  .colonist {
+    min-width: 90px;
+    padding: 5px 7px;
+    gap: 7px;
+  }
+  .colonist small {
+    max-width: 70px;
+    font-size: 8px;
+  }
+  .colonist-strip {
+    padding: 3px;
+  }
+  .resource-strip {
+    padding: 10px 3px;
+  }
+  .resource-strip > div {
+    padding: 0 3px;
+    grid-template-columns: 20px 22px;
+  }
+  .resource-strip span {
+    font-size: 7px;
+  }
+  .world-label {
+    left: 16px;
+    top: 81px;
+    font-size: 9px;
+  }
+  .focus-button {
+    top: 82px;
+    right: 16px;
+  }
+  .bottom-hud {
+    bottom: max(20px, env(safe-area-inset-bottom));
+    left: max(14px, env(safe-area-inset-left));
+    right: max(14px, env(safe-area-inset-right));
+  }
+  .navigation button {
+    min-width: 78px;
+    padding: 0 10px;
+    font-size: 11px;
+  }
+  .panel {
+    left: 14px;
+    bottom: 87px;
+    max-height: calc(100% - 165px);
+    padding: 17px;
+    width: 365px;
+  }
+  .panel.wide {
+    bottom: 82px;
+    max-height: calc(100% - 100px);
+  }
+  .context {
+    right: 14px;
+    bottom: 87px;
+    width: 242px;
+    padding: 17px;
+    max-height: calc(100% - 170px);
+  }
+  .tool-hint {
+    bottom: 86px;
+  }
+  .guide {
+    left: 16px;
+    top: 118px;
+    width: 231px;
+    padding: 19px 20px 8px;
+  }
+  .guide h1 {
+    font-size: 26px;
+    margin: 12px 0;
+  }
+  .guide ol {
+    margin: 12px 0;
+  }
+  .guide p {
+    margin: 8px 0;
+  }
+  .toast {
+    top: 80px;
+  }
+  .debug-overlay {
+    bottom: 80px;
+    left: 16px;
+  }
+  .save-indicator {
+    right: 16px;
+    bottom: 5px;
+  }
+}
+@media (max-height: 500px) and (orientation: landscape) {
+  .top-hud {
+    top: max(8px, env(safe-area-inset-top));
+  }
+  .brand strong {
+    font-size: 23px;
+  }
+  .colonist-strip {
+    padding: 2px;
+  }
+  .colonist {
+    min-height: 46px;
+  }
+  .resource-strip {
+    padding: 7px 3px;
+  }
+  .world-label {
+    top: 70px;
+  }
+  .focus-button {
+    top: 70px;
+  }
+  .bottom-hud {
+    bottom: max(12px, env(safe-area-inset-bottom));
+  }
+  .bottom-hud > div {
+    padding: 3px;
+  }
+  .navigation button {
+    min-height: 44px;
+  }
+  .save-indicator {
+    bottom: 1px;
+    font-size: 8px;
+  }
+  .guide {
+    top: 97px;
+    padding: 15px 18px 5px;
+    width: 221px;
+  }
+  .guide h1 {
+    font-size: 25px;
+    margin: 10px 0;
+  }
+  .guide p {
+    display: none;
+  }
+  .guide ol {
+    font-size: 10px;
+    line-height: 1.9;
+    margin: 9px 0;
+  }
+  .guide .text-button {
+    min-height: 36px;
+  }
+  .guide .eyebrow {
+    font-size: 8px;
+  }
+  .panel {
+    bottom: 73px;
+    max-height: calc(100% - 137px);
+    padding: 14px;
+  }
+  .panel.wide {
+    bottom: 73px;
+    max-height: calc(100% - 83px);
+  }
+  .panel-heading {
+    margin-bottom: 8px;
+  }
+  .panel-heading h2 {
+    font-size: 23px;
+  }
+  .catalogue {
+    grid-template-columns: 1fr 1fr;
+    gap: 5px;
+  }
+  .catalogue-item {
+    gap: 8px;
+    min-height: 63px;
+  }
+  .catalogue-icon {
+    width: 28px;
+    height: 32px;
+  }
+  .catalogue-item strong {
+    font-size: 12px;
+  }
+  .catalogue-item small {
+    font-size: 9px;
+    line-height: 1.4;
+  }
+  .catalogue-item .chevron {
+    display: none;
+  }
+  .panel-note {
+    font-size: 10px;
+    margin-top: 9px;
+  }
+  .context {
+    bottom: 73px;
+    max-height: calc(100% - 139px);
+    padding: 14px 17px;
+  }
+  .context h3 {
+    font-size: 22px;
+    margin: 7px 0;
+  }
+  .context p.job-status {
+    margin-bottom: 10px;
+  }
+  .needs {
+    margin-bottom: 9px;
+  }
+  .need {
+    margin: 6px 0;
+  }
+  .context .text-button {
+    min-height: 38px;
+  }
+  .context p {
+    margin: 8px 0;
+  }
+  .tool-hint {
+    bottom: 73px;
+    padding: 5px 7px 5px 13px;
+  }
+  .toast {
+    top: 70px;
+    padding: 9px 16px;
+    font-size: 11px;
+  }
+  .alert {
+    top: 70px;
+  }
+  .debug-overlay {
+    bottom: 68px;
+    font-size: 9px;
+  }
+  .work-table {
+    margin-top: 10px;
+  }
+  .work-table td {
+    padding: 4px 2px;
+  }
+  .work-table td button {
+    padding: 4px;
+    min-height: 44px;
+  }
+  .work-table small {
+    margin-top: 1px;
+  }
+  .settings-list {
+    grid-template-columns: 1fr 1fr;
+    column-gap: 18px;
+  }
+  .settings-list button {
+    font-size: 11px;
+    gap: 8px;
+  }
+  .settings-list span {
+    font-size: 8px;
+  }
+  .journal-list {
+    max-height: 200px;
+  }
+}
+@media (max-width: 740px) and (orientation: landscape) {
+  .brand strong {
+    font-size: 19px;
+  }
+  .brand > svg {
+    display: none;
+  }
+  .colonist {
+    min-width: 77px;
+    gap: 5px;
+    padding: 4px 5px;
+  }
+  .colonist-label small {
+    max-width: 53px;
+  }
+  .portrait {
+    width: 25px;
+    height: 32px;
+  }
+  .portrait:before {
+    left: 3px;
+  }
+  .portrait:after {
+    left: 8px;
+  }
+  .colonist b {
+    font-size: 11px;
+  }
+  .status-dot {
+    display: none;
+  }
+  .resource-strip > div {
+    grid-template-columns: 16px 20px;
+    padding: 0 2px;
+  }
+  .resource-strip svg {
+    width: 15px;
+  }
+  .resource-strip b {
+    font-size: 12px;
+  }
+  .navigation button {
+    min-width: 69px;
+    padding: 0 8px;
+    gap: 6px;
+  }
+  .navigation svg {
+    width: 17px;
+  }
+  .time-control button {
+    min-width: 44px;
+  }
+  .context {
+    width: 225px;
+  }
+  .guide {
+    width: 209px;
+  }
+  .tool-hint {
+    font-size: 11px;
+  }
+  .world-label > span:last-child,
+  .world-divider {
+    display: none;
+  }
+}
+@media (orientation: portrait) {
+  .top-hud {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .brand {
+    flex: 1;
+  }
+  .colonist-strip {
+    order: 3;
+    width: 100%;
+    justify-content: space-around;
+  }
+  .colonist {
+    flex: 1;
+  }
+  .resource-strip {
+    padding: 6px;
+  }
+  .world-label {
+    top: 143px;
+    font-size: 9px;
+  }
+  .focus-button {
+    top: 152px;
+  }
+  .bottom-hud {
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+  }
+  .navigation {
+    order: 2;
+    width: 100%;
+    justify-content: space-around;
+  }
+  .navigation button {
+    min-width: 60px;
+    padding: 0 7px;
+  }
+  .time-control {
+    align-self: flex-end;
+  }
+  .panel,
+  .panel.wide {
+    width: calc(100% - 24px);
+    left: 12px;
+    transform: none;
+    bottom: 136px;
+    max-height: calc(100% - 305px);
+  }
+  .context {
+    width: calc(100% - 24px);
+    right: 12px;
+    bottom: 136px;
+    max-height: calc(100% - 325px);
+  }
+  .guide {
+    top: 196px;
+    left: 16px;
+    width: 240px;
+  }
+  .portrait-notice {
+    display: flex;
+    position: absolute;
+    top: 169px;
+    left: 16px;
+    align-items: center;
+    gap: 8px;
+    font-size: 10px;
+    color: #e4e4c9;
+  }
+  .portrait-notice span {
+    font-size: 18px;
+  }
+  .tool-hint {
+    bottom: 135px;
+    max-width: calc(100% - 24px);
+    font-size: 10px;
+    gap: 3px 8px;
+    white-space: normal;
+  }
+  .tool-hint small {
+    font-size: 8px;
+  }
+  .toast,
+  .alert {
+    top: 147px;
+    width: max-content;
+    max-width: calc(100% - 32px);
+  }
+  .debug-overlay {
+    bottom: 128px;
+    font-size: 8px;
+  }
+  .work-table td button {
+    min-width: 48px;
+  }
+  .settings-list span {
+    font-size: 9px;
+  }
+}
+@media (max-height: 500px) and (orientation: landscape) {
+  .work-panel .panel-heading {
+    margin-bottom: 4px;
+  }
+  .work-panel .panel-heading h2 {
+    margin-top: 4px;
+  }
+  .work-panel .panel-note {
+    margin-top: 4px;
+    font-size: 9px;
+    line-height: 1.5;
+  }
+  .work-panel .work-table {
+    margin-top: 7px;
+  }
+  .work-panel .work-table td {
+    padding: 3px 2px;
+  }
+  .work-panel .work-table td button {
+    padding: 2px;
+    min-height: 44px;
+  }
+  .work-panel .work-table b {
+    font-size: 15px;
+  }
+}
+.guide .context-close {
+  min-width: 44px;
+  min-height: 44px;
+  width: 44px;
+  height: 44px;
+}
+.guide .text-button,
+.context .text-button {
+  min-height: 44px;
+}

@@ -1,0 +1,23 @@
+{
+  "name": "colony-sim",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0 --port 5180",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --host 0.0.0.0 --port 4180",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:browser": "playwright test",
+    "format": "prettier --write \"src/**/*.{ts,css}\" \"tests/**/*.ts\" \"scripts/*.mjs\" \"*.ts\" package.json tsconfig.json index.html",
+    "format:check": "prettier --check \"src/**/*.{ts,css}\" \"tests/**/*.ts\" \"scripts/*.mjs\" \"*.ts\" package.json tsconfig.json index.html"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.55.0",
+    "prettier": "^3.9.8",
+    "typescript": "^5.9.2",
+    "vite": "^7.1.5",
+    "vitest": "^5.0.1"
+  }
+}
