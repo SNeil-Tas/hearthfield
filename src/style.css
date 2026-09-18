@@ -687,6 +687,7 @@ meter::-webkit-meter-even-less-good-value {
   padding: 0 10px;
 }
 .toast {
+  pointer-events: none;
   position: absolute;
   left: 50%;
   top: 100px;
