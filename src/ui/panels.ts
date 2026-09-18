@@ -2,7 +2,7 @@ import { BUILDINGS, DAY_TICKS, JOB_LABELS, NODES, TERRAIN, WORK } from '../sim/d
 import type { World } from '../sim/types';
 import type { Panel, UIState } from './state';
 import { escapeHTML as esc, icon } from './icons';
-import { foodType, resourceTotal, shelteredTiles, tileKey } from '../sim/world';
+import { foodType, resourceTotal, shelteredTiles, tileKey, isFoodSpoiled } from '../sim/world';
 import { APP_VERSION, BUILD_ID } from '../build';
 
 const toolButton = (tool: string, label: string, detail: string, symbol = tool) =>
@@ -86,7 +86,7 @@ export function contextHTML(w: World, ui: UIState, owner?: string) {
   if (p) {
     const meter = (label: string, value: number) =>
       `<div class="need"><span>${label}</span><meter min="0" max="100" low="25" high="60" optimum="100" value="${value}"></meter><b>${Math.round(value)}</b></div>`;
-    content = `<span class="eyebrow">COLONIST · ${p.mood > 65 ? 'CONTENT' : p.mood > 35 ? 'UNEASY' : 'STRUGGLING'}</span><h3>${esc(p.name)}</h3><p class="job-status">${p.job ? JOB_LABELS[p.job.kind] : 'Taking a breather'}${p.carrying ? ` · ${p.carrying.quantity} ${p.carrying.resource}` : ''}</p><div class="needs">${meter('Food', p.hunger)}${meter('Rest', p.rest)}${meter('Health', p.health)}</div><button class="text-button" data-action="panel" data-value="work">Manage work priorities <span>↗</span></button>`;
+    content = `<span class="eyebrow">COLONIST · ${p.mood > 65 ? 'CONTENT' : p.mood > 35 ? 'UNEASY' : 'STRUGGLING'}</span><h3>${esc(p.name)}</h3><p class="job-status">${p.job ? JOB_LABELS[p.job.kind] : 'Taking a breather'}${p.carrying ? ` · ${p.carrying.quantity} ${p.carrying.resource}` : ''}</p><div class="needs">${meter('Food', p.hunger)}${meter('Rest', p.rest)}${meter('Health', p.health)}</div><p>${p.activity ?? 'resting'} · productivity ${Math.round((p.productivity ?? 1) * 100)}%${p.illnessUntil && p.illnessUntil > w.tick ? ' · mildly ill' : ''}${p.moodBias ? ` · mood ${p.moodBias > 0 ? '+' : ''}${p.moodBias}` : ''}</p><button class="text-button" data-action="panel" data-value="work">Manage work priorities <span>↗</span></button>`;
   } else if (node) {
     const def = NODES[node.kind];
     content = `<span class="eyebrow">${node.designated ? 'MARKED FOR GATHERING' : 'NATURAL RESOURCE'}</span><h3>${def.label}</h3><p>${def.yield} ${def.resource} when gathered.</p><button class="primary" data-action="node" data-value="${node.designated ? 'cancel' : 'gather'}">${icon(node.designated ? 'close' : 'orders')}${node.designated ? 'Cancel order' : node.kind === 'tree' ? 'Chop tree' : 'Gather'}</button>`;
@@ -106,7 +106,7 @@ export function contextHTML(w: World, ui: UIState, owner?: string) {
   } else if (b) {
     content = `<span class="eyebrow">COMPLETED BUILDING</span><h3>${BUILDINGS[b.kind].label}</h3><p>${BUILDINGS[b.kind].description}</p>`;
     if (b.kind === 'bed')
-      content += `<p>${shelteredTiles(w).has(tileKey(w, b)) ? 'Sheltered bed · best rest' : 'Outdoor bed · slower rest'}</p>`;
+      content += `<p>${shelteredTiles(w).has(tileKey(w, b)) ? 'Sheltered bed · best rest' : 'Outdoor bed · slower rest'}<br>Owner: ${b.ownerId ? esc(w.pawns.find((p) => p.id === b.ownerId)?.name ?? 'unknown') : 'Unclaimed'}</p>`;
     if (b.kind === 'cooking') {
       const raw = w.items
         .filter((item) => item.resource === 'food' && foodType(item) === 'raw')
@@ -117,7 +117,15 @@ export function contextHTML(w: World, ui: UIState, owner?: string) {
       ? '<p>Deconstruction is underway.</p>'
       : '<button class="text-button" data-action="deconstruct">Deconstruct <span>↗</span></button>';
   } else if (item) {
-    content = `<span class="eyebrow">PHYSICAL SUPPLIES</span><h3>${item.quantity} ${item.foodType === 'meal' ? 'meal' : item.resource}</h3><p>${w.stockpiles.includes(tileKey(w, item)) ? 'In a stockpile' : 'On the ground · Awaiting hauling'}</p>`;
+    const freshness =
+      item.resource === 'food'
+        ? isFoodSpoiled(w, item)
+          ? 'Spoiled'
+          : item.spoilsAt
+            ? `Spoils in ${Math.max(0, (item.spoilsAt - w.tick) / 6000).toFixed(1)} days`
+            : 'Fresh'
+        : '';
+    content = `<span class="eyebrow">PHYSICAL SUPPLIES</span><h3>${item.quantity} ${item.foodType === 'meal' ? 'meal' : item.resource}</h3><p>${freshness}${freshness ? '<br>' : ''}${w.stockpiles.includes(tileKey(w, item)) ? 'In a stockpile' : 'On the ground · Awaiting hauling'}</p>`;
   } else if (crop) {
     content = `<span class="eyebrow">GRAIN CROP</span><h3>${crop.growth >= 1 ? 'Ready to harvest' : crop.growth < 0.1 ? 'Freshly sown' : 'Growing'}</h3><p>${Math.round(crop.growth * 100)}% grown · Plants work will tend it.</p>`;
   } else if (ui.selectedTile) {

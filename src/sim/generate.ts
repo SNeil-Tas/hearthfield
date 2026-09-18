@@ -30,6 +30,8 @@ export function generateWorld(seed = Date.now() >>> 0): World {
     stockpiles: [],
     pawns: [],
     events: [],
+    weather: 'clear',
+    weatherUntil: 1800,
   };
   for (let y = 0; y < w.height; y++)
     for (let x = 0; x < w.width; x++) {
@@ -77,6 +79,8 @@ export function generateWorld(seed = Date.now() >>> 0): World {
     priorities: { plants: i === 0 ? 1 : 3, build: i === 1 ? 1 : 3, haul: i === 2 ? 1 : 2, cook: 2 },
     job: null,
     carrying: null,
+    moodBias: 0,
+    productivity: 1,
   }));
   for (let y = 42; y <= 44; y++) for (let x = 38; x <= 42; x++) w.stockpiles.push(y * w.width + x);
   drop(w, { x: 39, y: 42 }, 'food', 48);

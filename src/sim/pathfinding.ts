@@ -38,6 +38,7 @@ export function navigationGrid(w: World): Uint8Array {
   const grid = Uint8Array.from(w.terrain, (t) => (TERRAIN[t].passable ? 1 : 0));
   for (const n of w.nodes) if (n.kind !== 'berries') grid[tileKey(w, n)] = 0;
   for (const b of w.buildings) if (BUILDINGS[b.kind].blocks) grid[tileKey(w, b)] = 0;
+  for (const item of w.items) grid[tileKey(w, item)] = 0;
   return grid;
 }
 export function findPath(
@@ -59,6 +60,27 @@ export function findPath(
     : [to];
   const valid = goals.filter((p) => inside(w, p) && grid[tileKey(w, p)] === 1);
   if (!valid.length) return null;
+  const direct = (goal: Point, horizontalFirst: boolean) => {
+    const result: Point[] = [];
+    let x = start.x,
+      y = start.y;
+    const axes = horizontalFirst ? (['x', 'y'] as const) : (['y', 'x'] as const);
+    for (const axis of axes) {
+      const end = axis === 'x' ? goal.x : goal.y;
+      while ((axis === 'x' ? x : y) !== end) {
+        if (axis === 'x') x += Math.sign(end - x);
+        else y += Math.sign(end - y);
+        const p = { x, y };
+        if (!grid[tileKey(w, p)]) return null;
+        result.push(p);
+      }
+    }
+    return result;
+  };
+  for (const goal of valid) {
+    const straight = direct(goal, true) ?? direct(goal, false);
+    if (straight) return straight;
+  }
   const goalKeys = new Set(valid.map((p) => tileKey(w, p)));
   const startKey = tileKey(w, start);
   if (goalKeys.has(startKey)) return [];
@@ -67,9 +89,11 @@ export function findPath(
     previous = new Int32Array(size).fill(-1),
     closed = new Uint8Array(size);
   const heap = new Heap();
+  let expansions = 0;
   cost[startKey] = 0;
   heap.push(startKey, 0);
   while (heap.entries.length) {
+    if (++expansions > 700) return null;
     const key = heap.pop();
     if (closed[key]) continue;
     closed[key] = 1;

@@ -20,8 +20,17 @@ export function assignJob(
         (retries.get(`${pawn.id}:${candidate.keys.join(',')}`) ?? 0) <= w.tick,
     )
     .sort((a, b) => a.rank - b.rank);
-  for (const { candidate: c } of candidates.slice(0, 24)) {
-    const path = findPath(w, pawn, c.source ?? c.destination, c.source ? false : c.adjacent, grid);
+  // Solid item clutter creates more unreachable logistics candidates. Keep the
+  // bounded scan small so a congested map cannot turn assignment into a full
+  // world search every second.
+  for (const { candidate: c } of candidates.slice(0, 2)) {
+    const path = findPath(
+      w,
+      pawn,
+      c.source ?? c.destination,
+      c.source ? c.adjacent : c.adjacent,
+      grid,
+    );
     const onward = c.source ? findPath(w, c.source, c.destination, c.adjacent, grid) : [];
     if (path === null || onward === null) {
       retries.set(`${pawn.id}:${c.keys.join(',')}`, w.tick + 100);

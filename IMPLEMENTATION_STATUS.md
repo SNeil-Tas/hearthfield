@@ -1,8 +1,8 @@
 # Implementation status
 
-**Milestone:** v0.2 survival loop in progress, built on the first playable foundation. Original GDD preserved unchanged.
+**Milestone:** v0.3 friction and individuality in progress, built on the v0.2 survival loop. Original GDD preserved unchanged.
 
-**Patch:** v0.2.1 PWA update delivery fix complete; no gameplay scope added.
+**Patch:** v0.2.1 PWA update delivery fix remains the release foundation; v0.3 gameplay scope is now implemented.
 
 ## Completed
 
@@ -20,6 +20,11 @@
 - Production manifest, original 192/512 px icons, standalone/landscape request, generated service worker and verified offline reload.
 - Development-only debug API; optional path/tick/lock/entity diagnostics; project documentation and Git history.
 - Growing zones, one grain crop, sow/harvest jobs, physical raw food, cooking stations, physical meals, meal preference, deconstruction work, shelter recognition, and sheltered-bed rest consequences.
+- Activity-based metabolism; carrying has the highest hunger/rest cost and activity/productivity is inspectable.
+- Loose stacks are solid navigation obstacles; pickup/drop uses adjacent interaction and storage remains spatial with a 48-unit cell cap.
+- Food has simple raw/meal spoilage timers and spoiled food is retained as visible, inedible waste.
+- Plants, Build and Cook skills affect deterministic work speed; hunger, rest, mood and illness modestly affect productivity.
+- Clear/rain/heavy-rain weather slows outdoor work; mild illness recovers naturally; beds auto-claim and prefer their owner.
 
 ## Verification
 
@@ -32,15 +37,15 @@
 - Tested a 15-minute three-colonist simulation and a ten-minute 20-colonist workload. The latter measured about 1.52 s for 6,000 ticks on this desktop (p95 1.47 ms/tick; max 14.04 ms in that run).
 - Screenshots inspected. See [verification notes](docs/VERIFICATION.md) for scope and limits. The user reports the physical Android validation flow passed without a major mobile usability or performance blocker.
 
-## Latest verification run
+## Latest v0.3 verification run
 
 - Standard system Node.js: `C:\Program Files\nodejs\node.exe` v24.19.0; npm 11.17.0.
 - `npm run typecheck`: passed.
-- `npm test -- --run`: 17/17 passed in 3.33 seconds.
-- `npm run build`: passed; 49.77 kB JavaScript and 15.84 kB CSS before gzip.
+- `npm test -- --run`: 28/28 passed in 8.79 seconds.
+- `npm run build`: passed; 61.73 kB JavaScript and 16.39 kB CSS before gzip.
 - `npm run verify:production`: passed; relative bundle paths, manifest, icons, and generated service worker verified.
 - `npm run format:check`: passed.
-- `npm run test:browser`: 9/9 Chromium tests passed in 22.2 seconds, including touch, phone-sized layouts, save/reload, offline startup, and multi-tab protection.
+- `npm run test:browser`: 11/11 Chromium tests passed in 18.4 seconds, including touch, phone-sized layouts, save/reload, offline startup, and multi-tab protection. A physical Android v0.3 update check remains.
 
 ## GitHub Pages deployment
 
@@ -56,11 +61,11 @@
 - **Emulated mobile verification:** Chromium touch events and landscape/portrait viewport checks at 844×390, 667×375, and 390×844.
 - **Physical-device verification:** user-reported passed. The browser, installed PWA, save/reopen, offline launch, and sustained real-device flow worked without a major mobile usability or performance blocker. Continue reporting thermals, battery, and background behavior during survival-loop playtests.
 
-## v0.2 survival-loop limitations
+## v0.3 friction limitations
 
-- One grain crop only; no crop catalogue, seasons, spoilage, nutrition categories, or stockpile filters.
+- One grain crop only; no crop catalogue, seasons, nutrition categories, or stockpile filters. Spoilage is age-based rather than temperature-based.
 - Cooking uses one automatic rule and a six-meal target; there is no bill editor, ingredient policy, or workstation queue UI.
-- Shelter is enclosed-tile recognition only. It has no roofs, room quality, ownership, temperature, weather, or airflow.
+- Shelter is enclosed-tile recognition only. It has no roofs, room quality, temperature, or airflow. Weather is a small outdoor-work modifier only.
 - Blocked-work explanations cover common construction and cooking shortages in context panels; unreachable-job diagnosis remains intentionally lightweight.
 
 ## Partial systems and known limitations

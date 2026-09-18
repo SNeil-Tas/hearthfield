@@ -13,7 +13,18 @@ export function walkable(w: World, p: Point) {
     inside(w, p) &&
     TERRAIN[w.terrain[tileKey(w, p)]!].passable &&
     !w.buildings.some((b) => BUILDINGS[b.kind].blocks && sameTile(b, p)) &&
-    !w.nodes.some((n) => n.kind !== 'berries' && sameTile(n, p))
+    !w.nodes.some((n) => n.kind !== 'berries' && sameTile(n, p)) &&
+    !w.items.some((i) => sameTile(i, p))
+  );
+}
+export const FOOD_LIFETIME: Record<FoodType, number> = { raw: 3 * 6000, meal: 1.5 * 6000 };
+export function isFoodSpoiled(
+  w: World,
+  item: { resource: Resource; spoiled?: boolean; spoilsAt?: number },
+) {
+  return (
+    item.resource === 'food' &&
+    (item.spoiled === true || (item.spoilsAt !== undefined && w.tick >= item.spoilsAt))
   );
 }
 export function drop(
@@ -31,7 +42,7 @@ export function drop(
     y: Math.round(p.y),
     resource,
     quantity,
-    ...(resource === 'food' ? { foodType: type } : {}),
+    ...(resource === 'food' ? { foodType: type, spoilsAt: w.tick + FOOD_LIFETIME[type] } : {}),
   });
 }
 export function dropFood(w: World, p: Point, quantity: number, foodType: FoodType = 'raw') {
@@ -43,6 +54,7 @@ export function dropFood(w: World, p: Point, quantity: number, foodType: FoodTyp
     resource: 'food',
     quantity,
     foodType,
+    spoilsAt: w.tick + FOOD_LIFETIME[foodType],
   });
 }
 export function foodType(item: { resource: Resource; foodType?: FoodType }): FoodType {

@@ -77,7 +77,7 @@ The production service worker precaches immutable shell assets and uses network-
 
 ## Deploy over HTTPS
 
-The repository includes [`.github/workflows/deploy-pages.yml`](.github/workflows/deploy-pages.yml). It runs the production build and publishes `dist/` to GitHub Pages after every push to `main`, with a manual dispatch option. The app uses relative Vite, manifest, and service-worker paths, so it works at a GitHub Pages project subpath and remains installable from that HTTPS origin.
+The repository includes [`.github/workflows/deploy-pages.yml`](.github/workflows/deploy-pages.yml). It runs the production build and publishes `dist/` to GitHub Pages after every push to `main`, with a manual dispatch option. The app uses relative Vite, manifest, and service-worker paths, so it works at a GitHub Pages project subpath and remains installable from that HTTPS origin. v0.3.0 adds activity friction, solid item clutter, spoilage, weather, illness and bed ownership while preserving the v0.2.1 update flow.
 
 Repository: [github.com/SNeil-Tas/hearthfield](https://github.com/SNeil-Tas/hearthfield). Live site: [sneil-tas.github.io/hearthfield](https://sneil-tas.github.io/hearthfield/). The `main` branch deploys through GitHub Actions using [`.github/workflows/deploy-pages.yml`](.github/workflows/deploy-pages.yml). Future pushes to `main` update the site automatically; the generated service worker identifies the GitHub commit, prompts controlled activation, and removes the previous shell after activation. Open the live HTTPS URL on Android Chrome, use **Install app**, and test the installed PWA. Physical Android testing passed for the previous release; v0.2.1 update delivery still needs the targeted phone check.
 
@@ -87,4 +87,4 @@ See [ARCHITECTURE.md](ARCHITECTURE.md), [DECISIONS.md](DECISIONS.md), [IMPLEMENT
 
 In development, `window.colonyDebug` exposes the simulation, camera, clock, UI state, `step(count)`, and `save()`. Pause first when stepping manually. **More → Diagnostics** shows job paths, tick, reservation count, entity IDs, positions and selected-target ownership. This debug console API is omitted from production.
 
-The prototype intentionally has no combat, cooking, roof/shelter simulation, farming, death, audio, or cloud saves yet. Hunger/rest, physical logistics, navigation and construction are live systems rather than scripted animations.
+The prototype intentionally has no combat, raids, medicine, roof/temperature simulation, death, audio, or cloud saves yet. Farming, cooking, shelter, physical logistics, navigation, activity metabolism and construction are live systems rather than scripted animations.

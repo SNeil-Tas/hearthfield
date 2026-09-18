@@ -1,10 +1,11 @@
 import { BUILDINGS, NODES, TERRAIN } from '../sim/definitions';
+import type { WeatherKind } from '../sim/types';
 import { Reservations } from '../sim/reservations';
 import { interruptJob } from '../sim/jobs';
 import type { World } from '../sim/types';
 
 export interface SaveEnvelope {
-  version: 1 | 2;
+  version: 1 | 2 | 3;
   savedAt: number;
   checksum: string;
   payload: string;
@@ -16,9 +17,9 @@ export function checksum(text: string) {
 }
 export function encode(w: World): SaveEnvelope {
   const payload = JSON.stringify(w);
-  return { version: 2, savedAt: Date.now(), checksum: checksum(payload), payload };
+  return { version: 3, savedAt: Date.now(), checksum: checksum(payload), payload };
 }
-function migrate(world: any, version: 1 | 2) {
+function migrate(world: any, version: 1 | 2 | 3) {
   if (version === 1) {
     world.crops ??= [];
     world.growingZones ??= [];
@@ -29,6 +30,18 @@ function migrate(world: any, version: 1 | 2) {
       pawn.priorities.cook ??= 2;
     }
     for (const item of world.items ?? []) if (item.resource === 'food') item.foodType ??= 'raw';
+  }
+  if (version <= 2) {
+    world.weather ??= 'clear';
+    world.weatherUntil ??= world.tick + 1800;
+    for (const item of world.items ?? []) {
+      if (item.resource === 'food')
+        item.spoilsAt ??= world.tick + (item.foodType === 'meal' ? 9000 : 18000);
+    }
+    for (const pawn of world.pawns ?? []) {
+      pawn.moodBias ??= 0;
+      pawn.productivity ??= 1;
+    }
   }
   return world;
 }
@@ -120,6 +133,11 @@ export function validateWorld(value: unknown): asserts value is World {
     w.stockpiles.some((k) => !integer(k, 0, w.width * w.height - 1))
   )
     throw new Error('Invalid inventory.');
+  if (
+    !['clear', 'rain', 'heavy-rain'].includes(w.weather) ||
+    !integer(w.weatherUntil, w.tick, Number.MAX_SAFE_INTEGER)
+  )
+    throw new Error('Invalid weather.');
   if (w.pawns.length < 1 || w.pawns.length > 50) throw new Error('Invalid colonist count.');
   for (const p of w.pawns) {
     if (typeof p.name !== 'string' || p.name.length > 60 || !/^#[0-9a-f]{6}$/i.test(p.color))
@@ -150,7 +168,7 @@ export function validateWorld(value: unknown): asserts value is World {
 export function decode(raw: unknown): { world: World; savedAt: number } {
   if (!raw || typeof raw !== 'object') throw new Error('Unrecognised save.');
   const e = raw as SaveEnvelope;
-  if (e.version !== 1 && e.version !== 2)
+  if (e.version !== 1 && e.version !== 2 && e.version !== 3)
     throw new Error('This save needs a different game version.');
   if (
     typeof e.payload !== 'string' ||

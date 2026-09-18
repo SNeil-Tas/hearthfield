@@ -3,7 +3,7 @@ import { emit } from './events';
 import { findPath } from './pathfinding';
 import { Reservations } from './reservations';
 import type { Pawn, World } from './types';
-import { drop, dropFood, foodType, nextId, sameTile, tileKey } from './world';
+import { drop, dropFood, foodType, nextId, sameTile, tileKey, isFoodSpoiled } from './world';
 
 export function interruptJob(w: World, pawn: Pawn, reservations: Reservations) {
   if (pawn.carrying) {
@@ -33,6 +33,13 @@ export function advanceJob(
   const bp = w.blueprints.find((b) => b.id === job.targetId);
   const crop = w.crops.find((c) => c.id === job.targetId);
   const building = w.buildings.find((b) => b.id === job.targetId);
+  const weatherWork =
+    w.weather === 'clear' ||
+    (job.kind !== 'chop' && job.kind !== 'gather' && job.kind !== 'harvest' && job.kind !== 'sow')
+      ? 1
+      : w.weather === 'rain'
+        ? 0.82
+        : 0.65;
   if (
     (['build', 'deliver'].includes(job.kind) && !bp) ||
     (['chop', 'gather'].includes(job.kind) && !node) ||
@@ -51,7 +58,10 @@ export function advanceJob(
     const dx = next.x - pawn.x,
       dy = next.y - pawn.y,
       length = Math.hypot(dx, dy);
-    const step = TICK_SECONDS * (pawn.rest < 15 ? 1.4 : 2.5);
+    const step =
+      TICK_SECONDS *
+      (pawn.rest < 15 ? 1.4 : 2.5) *
+      (pawn.illnessUntil && pawn.illnessUntil > w.tick ? 0.88 : 1);
     if (length <= step) {
       pawn.x = next.x;
       pawn.y = next.y;
@@ -77,14 +87,23 @@ export function advanceJob(
       cancel();
       return false;
     }
-    const path = findPath(w, pawn, job.destination, ['deliver', 'cook'].includes(job.kind), grid);
+    const path = findPath(
+      w,
+      pawn,
+      job.destination,
+      ['deliver', 'cook', 'haul'].includes(job.kind),
+      grid,
+    );
     if (path === null) {
       cancel();
       return false;
     }
     pawn.carrying = { resource: item.resource, quantity: amount, foodType: foodType(item) };
     item.quantity -= amount;
-    if (!item.quantity) w.items = w.items.filter((i) => i.id !== item.id);
+    if (!item.quantity) {
+      w.items = w.items.filter((i) => i.id !== item.id);
+      grid[tileKey(w, item)] = 1;
+    }
     job.path = path;
     job.phase = 'target';
     return false;
@@ -97,7 +116,8 @@ export function advanceJob(
     case 'chop':
     case 'gather': {
       if (!node) break;
-      node.work += TICK_SECONDS * (1 + pawn.skills.plants * 0.06);
+      node.work +=
+        TICK_SECONDS * (1 + pawn.skills.plants * 0.06) * (pawn.productivity ?? 1) * weatherWork;
       if (node.work >= NODES[node.kind].work) {
         const def = NODES[node.kind];
         drop(w, node, def.resource, def.yield);
@@ -125,9 +145,12 @@ export function advanceJob(
     }
     case 'harvest': {
       if (!crop) break;
-      crop.growth += (TICK_SECONDS * (1 + pawn.skills.plants * 0.04)) / 3;
+      crop.growth +=
+        (TICK_SECONDS * (1 + pawn.skills.plants * 0.04) * (pawn.productivity ?? 1) * weatherWork) /
+        3;
       if (crop.growth >= 1.25) {
         dropFood(w, crop, 8, 'raw');
+        grid[tileKey(w, crop)] = 0;
         w.crops = w.crops.filter((c) => c.id !== crop.id);
         emit(w, `${pawn.name} harvested a grain crop.`, 'success');
         finish();
@@ -138,6 +161,7 @@ export function advanceJob(
     case 'haul': {
       if (pawn.carrying) {
         drop(w, job.destination, pawn.carrying.resource, pawn.carrying.quantity);
+        grid[tileKey(w, job.destination)] = 0;
         pawn.carrying = null;
       }
       finish();
@@ -153,7 +177,7 @@ export function advanceJob(
     }
     case 'build': {
       if (!bp) break;
-      bp.work += TICK_SECONDS * (1 + pawn.skills.build * 0.06);
+      bp.work += TICK_SECONDS * (1 + pawn.skills.build * 0.06) * (pawn.productivity ?? 1);
       if (bp.work >= BUILDINGS[bp.kind].work) {
         // Never seal a moving colonist into a newly completed wall.
         if (BUILDINGS[bp.kind].blocks && w.pawns.some((p) => sameTile(p, bp))) break;
@@ -167,9 +191,10 @@ export function advanceJob(
     }
     case 'cook': {
       if (!building || building.kind !== 'cooking' || !pawn.carrying) break;
-      job.progress += TICK_SECONDS;
+      job.progress += TICK_SECONDS * (1 + pawn.skills.cook * 0.04) * (pawn.productivity ?? 1);
       if (job.progress >= 6) {
         dropFood(w, building, 1, 'meal');
+        grid[tileKey(w, building)] = 0;
         pawn.carrying = null;
         emit(w, `${pawn.name} prepared a simple meal.`, 'success');
         finish();
@@ -179,10 +204,11 @@ export function advanceJob(
     }
     case 'deconstruct': {
       if (!building) break;
-      job.progress += TICK_SECONDS * (1 + pawn.skills.build * 0.06);
+      job.progress += TICK_SECONDS * (1 + pawn.skills.build * 0.06) * (pawn.productivity ?? 1);
       if (job.progress >= BUILDINGS[building.kind].work) {
         w.buildings = w.buildings.filter((b) => b.id !== building.id);
         drop(w, building, 'wood', Math.floor(BUILDINGS[building.kind].cost * 0.6));
+        grid[tileKey(w, building)] = 0;
         emit(
           w,
           `${pawn.name} recovered materials from the ${BUILDINGS[building.kind].label.toLowerCase()}.`,
@@ -195,7 +221,7 @@ export function advanceJob(
     }
     case 'eat': {
       const food = w.items.find((i) => i.id === job.sourceId);
-      if (!food) {
+      if (!food || isFoodSpoiled(w, food)) {
         cancel();
         break;
       }
@@ -203,6 +229,7 @@ export function advanceJob(
         food.quantity--;
         if (!food.quantity) w.items = w.items.filter((i) => i.id !== food.id);
         pawn.hunger = Math.min(100, pawn.hunger + (foodType(food) === 'meal' ? 92 : 65));
+        pawn.moodBias = (pawn.moodBias ?? 0) + (foodType(food) === 'meal' ? 2 : -3);
         emit(w, `${pawn.name} stopped for a meal.`);
         finish();
       }
@@ -211,9 +238,18 @@ export function advanceJob(
     case 'sleep': {
       const bed = job.targetId ? w.buildings.find((b) => b.id === job.targetId) : undefined;
       const shelteredBed = !!bed && sheltered.has(tileKey(w, bed));
+      if (bed && job.progress === TICK_SECONDS) {
+        if (!bed.ownerId) bed.ownerId = pawn.id;
+        else if (bed.ownerId !== pawn.id) {
+          pawn.moodBias = (pawn.moodBias ?? 0) - 3;
+          const owner = w.pawns.find((p) => p.id === bed.ownerId);
+          if (owner) owner.moodBias = (owner.moodBias ?? 0) - 2;
+        }
+      }
+      const own = !!bed && bed.ownerId === pawn.id;
       pawn.rest = Math.min(
         100,
-        pawn.rest + TICK_SECONDS * (bed ? (shelteredBed ? 4.2 : 3.2) : 1.3),
+        pawn.rest + TICK_SECONDS * (bed ? (own ? 5.2 : shelteredBed ? 4.2 : 3.2) : 1.3),
       );
       if (pawn.rest >= 95 || pawn.hunger < 18) finish();
       break;

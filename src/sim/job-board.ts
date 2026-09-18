@@ -1,6 +1,6 @@
 import { BUILDINGS } from './definitions';
 import type { Job, Pawn, Point, WorkType, World } from './types';
-import { distance, tileKey, sameTile, foodType } from './world';
+import { distance, tileKey, sameTile, foodType, isFoodSpoiled } from './world';
 
 export interface Candidate {
   kind: Job['kind'];
@@ -95,7 +95,12 @@ export function workCandidates(w: World): Candidate[] {
       .reduce((total, item) => total + item.quantity, 0);
     if (meals >= 6) continue;
     for (const item of w.items)
-      if (item.resource === 'food' && foodType(item) === 'raw' && item.quantity >= 4) {
+      if (
+        item.resource === 'food' &&
+        foodType(item) === 'raw' &&
+        !isFoodSpoiled(w, item) &&
+        item.quantity >= 4
+      ) {
         candidates.push({
           kind: 'cook',
           sourceId: item.id,
@@ -125,14 +130,14 @@ export function workCandidates(w: World): Candidate[] {
       // Several destination choices allow haulers to work concurrently.
       const destinations = [...space]
         .sort((a, b) => distance(a, item) - distance(b, item))
-        .slice(0, 4);
+        .slice(0, 1);
       for (const destination of destinations)
         candidates.push({
           kind: 'haul',
           sourceId: item.id,
           source: item,
           destination,
-          adjacent: false,
+          adjacent: true,
           keys: [item.id, `store:${tileKey(w, destination)}`],
           work: 'haul',
           score: distance(item, destination) * 0.2,
@@ -144,12 +149,12 @@ export function needCandidates(w: World, pawn: Pawn): Candidate[] {
   const candidates: Candidate[] = [];
   if (pawn.hunger < 38)
     for (const item of w.items)
-      if (item.resource === 'food')
+      if (item.resource === 'food' && !isFoodSpoiled(w, item))
         candidates.push({
           kind: 'eat',
           sourceId: item.id,
           destination: item,
-          adjacent: false,
+          adjacent: true,
           keys: [item.id],
           score: -1000 + distance(pawn, item) + (foodType(item) === 'meal' ? -40 : 0),
         });
@@ -174,7 +179,8 @@ export function needCandidates(w: World, pawn: Pawn): Candidate[] {
           destination: bed,
           adjacent: false,
           keys: [bed.id],
-          score: -800 + distance(pawn, bed),
+          score:
+            -800 + distance(pawn, bed) + (bed.ownerId === pawn.id ? -35 : bed.ownerId ? 10 : 0),
         });
     candidates.push({
       kind: 'sleep',

@@ -8,6 +8,7 @@ import { Reservations } from './reservations';
 import type { Command, World } from './types';
 import { BUILDINGS, CROP_GROWTH_TICKS } from './definitions';
 import { inside, sameTile, shelteredTiles, tileKey } from './world';
+import { emit } from './events';
 
 export class Simulation {
   readonly reservations = new Reservations();
@@ -34,6 +35,33 @@ export class Simulation {
   step() {
     const w = this.world;
     w.tick++;
+    if (w.tick >= w.weatherUntil) {
+      w.weather = w.weather === 'clear' ? 'rain' : w.weather === 'rain' ? 'heavy-rain' : 'clear';
+      w.weatherUntil = w.tick + (w.weather === 'heavy-rain' ? 900 : 1800);
+      emit(
+        w,
+        `Weather changed to ${w.weather === 'heavy-rain' ? 'heavy rain' : w.weather}.`,
+        'info',
+      );
+    }
+    if (w.tick % 100 === 0) {
+      for (const item of w.items)
+        if (item.resource === 'food' && item.spoilsAt !== undefined && w.tick >= item.spoilsAt)
+          item.spoiled = true;
+      for (const pawn of w.pawns) {
+        if (pawn.illnessUntil !== undefined && pawn.illnessUntil <= w.tick) {
+          pawn.illnessUntil = undefined;
+          emit(w, `${pawn.name} recovered from a mild illness.`, 'success');
+        }
+        if (
+          pawn.illnessUntil === undefined &&
+          (w.tick + w.seed + pawn.id.length * 17) % 24000 === 0
+        ) {
+          pawn.illnessUntil = w.tick + 900;
+          emit(w, `${pawn.name} is mildly ill and will recover naturally.`, 'warning');
+        }
+      }
+    }
     if (this.dirty || w.tick % 10 === 0) {
       this.board = workCandidates(w);
       this.grid = navigationGrid(w);
@@ -51,7 +79,7 @@ export class Simulation {
     for (let i = 0; i < w.pawns.length; i++) {
       const pawn = w.pawns[i]!;
       if (w.tick % 10 === 0) {
-        updateNeeds(pawn);
+        updateNeeds(w, pawn);
         if (shouldInterrupt(pawn)) interruptJob(w, pawn, this.reservations);
       }
       if (!pawn.job && (w.tick + i * 3) % 10 === 0)

@@ -24,7 +24,7 @@ Simulation modules have no browser, renderer or DOM dependencies. Rendering read
 | Execution | `src/sim/jobs.ts` | Travel, carrying, harvest/work progress, delivery, consumption, completion |
 | Needs | `src/sim/needs.ts` | Hunger, rest, health effects, derived mood and interruption |
 | Reservations | `src/sim/reservations.ts` | Atomic multi-key claims and owner-wide release |
-| Navigation | `src/sim/pathfinding.ts` | Four-way A*, binary heap, isolated walkability grid |
+| Navigation | `src/sim/pathfinding.ts` | Four-way A*, binary heap, isolated walkability grid including loose item occupancy |
 | Events | `src/sim/events.ts` | Bounded simulation event journal |
 | Camera / render | `src/view/` | Screen/world conversion, zoom, culling, original shapes, visual smoothing |
 | Touch | `src/input/gestures.ts` | Pointer tracking, thresholded taps, pan, pinch, area/line previews |
@@ -33,7 +33,7 @@ Simulation modules have no browser, renderer or DOM dependencies. Rendering read
 
 ## Time and execution
 
-The simulation advances at **10 Hz**. Movement updates each tick; needs and work-board rebuilding run at **1 Hz**. Idle pawns scan on staggered one-second schedules, with at most 24 candidate path attempts per assignment. Failed routes receive a ten-second retry cooldown, cleared after player commands. Work changes dirty the shared board; it is never rebuilt at rendering frequency.
+The simulation advances at **10 Hz**. Movement updates each tick; needs, spoilage, illness and work-board rebuilding run at **1 Hz**. Idle pawns scan on staggered one-second schedules, with at most two candidate path attempts per assignment after ranking. Failed routes receive a ten-second retry cooldown, cleared after player commands. Work changes dirty the shared board; it is never rebuilt at rendering frequency.
 
 The frame accumulator caps elapsed time at 250 ms to avoid catch-up spirals. At 4× this is at most ten ticks per render. Long stalls therefore slow simulated time rather than triggering an unbounded catch-up. Hidden documents do not advance simulation. Renderer-only exponential smoothing makes 10 Hz pawn movement visually continuous; it never determines positions, arrival or work completion.
 
@@ -56,11 +56,11 @@ The source stack, construction task, bed, and haul destination cell use exclusiv
 
 Cancellation and urgent needs drop carried resources before clearing the job and reservations. Blueprint cancellation also refunds delivered wood. Harvest and construction progress belong to world objects, so interruption does not erase completed work. Build completion converts delivered wood into a building, after which that wood is no longer loose inventory. A wall cannot finish over a colonist; idle occupants autonomously step aside. Doors and beds are passable.
 
-Stacks stay separate when dropped so active stack IDs/reservations remain stable. Storage cells accept all three resources and permit a bounded load (a cell with fewer than 48 units may receive up to twelve more). There are no stockpile filters, merging policies or dedicated inventory containers yet.
+Stacks stay separate when dropped so active stack IDs/reservations remain stable. Storage cells accept all three resources and permit a bounded aggregate load of 48 units. There are no stockpile filters, merging policies or dedicated inventory containers yet; full cells are omitted from haul candidates.
 
 ## Navigation and scope of optimization
 
-The 80×80 navigation grid marks deep water, trees, stone outcrops and completed walls impassable. Berry bushes, doors and beds are traversable. Blueprints do not block until built. Jobs needing access to a tree or building path to an adjacent tile; food, stockpile delivery and beds path onto the tile.
+The 80×80 navigation grid marks deep water, trees, stone outcrops, completed walls and loose item stacks impassable. Berry bushes, doors and beds are traversable. Blueprints do not block until built. Jobs needing access to a tree, item or building path to an adjacent tile; haul delivery drops from an adjacent storage tile. A direct Manhattan route is attempted before A* to keep ordinary open-map movement cheap.
 
 A* uses Manhattan distance and a binary heap. Paths are retained for the job, and the next tile is revalidated as the pawn moves. A blocked route aborts safely and returns to normal job selection. The grid refreshes on world topology changes and at the slow system rate.
 
@@ -76,7 +76,7 @@ DOM panels use safe-area insets and 44 px action targets. Work/settings/journal 
 
 ## Persistence and migration
 
-Save envelope version **1** contains a millisecond timestamp, JSON payload and FNV integrity checksum. The checksum detects accidental corruption; it is not an authentication mechanism. World validation rejects unknown definitions, invalid quantities/coordinates/needs, duplicate identities and invalid ID sequences before state reaches gameplay.
+Save envelope version **3** contains a millisecond timestamp, JSON payload and FNV integrity checksum. The checksum detects accidental corruption; it is not an authentication mechanism. World validation rejects unknown definitions, invalid quantities/coordinates/needs, duplicate identities and invalid ID sequences before state reaches gameplay.
 
 IndexedDB database `hearthfield`, schema 1, contains `saves/latest` and `saves/backup`. Both writes occur in one transaction; queued snapshots preserve local write ordering. Page hide also writes a best-effort synchronous recovery envelope to localStorage. Resume validates all candidates and picks the newest valid timestamp. Complete read failure never silently overwrites the original data.
 
@@ -98,4 +98,4 @@ Completed buildings can be marked for deconstruction. The existing Build work pa
 
 Shelter is a derived cache, recalculated when topology changes. A boundary flood fill treats walls and doors as room boundaries; tiles not reached from the map edge are enclosed. A bed in an enclosed tile gives the strongest rest recovery, an outdoor bed gives the middle rate, and ground sleep remains the weakest. This is intentionally a small shelter consequence rather than a temperature or room simulation.
 
-Save envelopes are version 2. Loading version 1 adds empty agriculture fields, raw food defaults, and default cooking skills/priorities before normal validation. Job state remains ephemeral across loading, so reservations and carried ingredients are reconstructed safely.
+Save envelopes are version 3. Loading version 1/2 adds safe agriculture, weather, food-expiry, mood/productivity and neutral ownership defaults before normal validation. Job state remains ephemeral across loading, so reservations and carried ingredients are reconstructed safely.

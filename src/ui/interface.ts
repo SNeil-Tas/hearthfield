@@ -30,7 +30,7 @@ export class Interface {
     this.root = root;
     root.innerHTML = `<canvas id="world" aria-label="Colony map. Drag to pan, pinch or scroll to zoom. Use Orders or Architect to make plans."></canvas>
       <header class="top-hud"><div class="brand">${icon('leaf')}<div><strong>hearthfield</strong><span>A LITTLE COLONY, A LIVING WORLD</span></div></div><div class="colonist-strip" aria-label="Colonists"></div><div class="resource-strip" aria-label="Physical supplies">${['wood', 'stone', 'food'].map((r) => `<div title="${r} on ground and carried">${icon(r)}<b id="resource-${r}">0</b><span>${r}</span></div>`).join('')}</div></header>
-      <div class="world-label"><span class="season-dot"></span><span id="day-label">Day 1 · Early morning</span><span class="world-divider">/</span><span>Temperate woodland</span></div>
+      <div class="world-label"><span class="season-dot"></span><span id="day-label">Day 1 · Early morning</span><span class="world-divider">/</span><span id="weather-label">Clear · outdoor work normal</span></div>
       <button class="focus-button icon-button" data-action="focus" aria-label="Focus settlement">${icon('focus')}</button>
       <aside class="guide" aria-label="Getting started"><button class="icon-button context-close" data-action="dismiss-guide" aria-label="Dismiss getting started">${icon('close')}</button><span class="eyebrow">A SMALL BEGINNING</span><h1>Make room<br>for tomorrow.</h1><p>Three settlers. An open meadow.<br>The rest is up to you.</p><ol><li>Mark trees in <b>Orders</b>.</li><li>Plan beds in <b>Architect</b>.</li><li>Watch your people make it happen.</li></ol><button class="text-button" data-action="dismiss-guide">Let’s settle in <span>→</span></button></aside>
       <div class="alert" role="status"></div><div class="update-banner" role="status" hidden><span>New version available</span><button data-action="update">Reload</button><button data-action="update-later">Later</button></div><div class="tool-hint" hidden></div><div class="toast" role="status" hidden></div>
@@ -95,6 +95,12 @@ export class Interface {
     const hour = (Math.floor(((w.tick % DAY_TICKS) / DAY_TICKS) * 24) + 6) % 24;
     this.el('#day-label').textContent =
       `Day ${Math.floor(w.tick / DAY_TICKS) + 1} · ${String(hour).padStart(2, '0')}:${String(Math.floor(((w.tick % 250) / 250) * 60)).padStart(2, '0')}`;
+    this.el('#weather-label').textContent =
+      w.weather === 'clear'
+        ? 'Clear · outdoor work normal'
+        : w.weather === 'rain'
+          ? 'Rain · outdoor work slower'
+          : 'Heavy rain · outdoor work much slower';
     this.el('.guide').hidden = !ui.guide || !!ui.panel || ui.tool !== 'inspect' || !!ui.selectedId;
     const alert = this.el('.alert');
     alert.textContent =

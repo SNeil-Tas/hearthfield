@@ -5,6 +5,9 @@ export interface Point {
 export type Terrain = 'soil' | 'fertile' | 'rock' | 'water';
 export type Resource = 'wood' | 'stone' | 'food';
 export type FoodType = 'raw' | 'meal';
+export type WeatherKind = 'clear' | 'rain' | 'heavy-rain';
+export type ActivityKind =
+  'sleeping' | 'resting' | 'walking' | 'light-work' | 'working' | 'heavy-work' | 'hauling';
 export type BuildingKind = 'wall' | 'door' | 'bed' | 'cooking';
 export type NodeKind = 'tree' | 'stone' | 'berries';
 export type WorkType = 'plants' | 'haul' | 'build' | 'cook';
@@ -28,6 +31,8 @@ export interface Stack {
 }
 export interface Item extends Point, Stack {
   id: string;
+  spoilsAt?: number;
+  spoiled?: boolean;
 }
 export interface ResourceNode extends Point {
   id: string;
@@ -44,6 +49,7 @@ export interface Building extends Point {
   id: string;
   kind: BuildingKind;
   deconstructing?: boolean;
+  ownerId?: string;
 }
 export interface Blueprint extends Building {
   delivered: number;
@@ -72,6 +78,10 @@ export interface Pawn extends Point {
   priorities: Record<WorkType, number>;
   job: Job | null;
   carrying: Stack | null;
+  illnessUntil?: number;
+  moodBias?: number;
+  activity?: ActivityKind;
+  productivity?: number;
 }
 export interface GameEvent {
   tick: number;
@@ -94,6 +104,8 @@ export interface World {
   stockpiles: number[];
   pawns: Pawn[];
   events: GameEvent[];
+  weather: WeatherKind;
+  weatherUntil: number;
 }
 export type Command =
   | { type: 'designate'; points: Point[]; cancel?: boolean }

@@ -1,4 +1,4 @@
-# Verification record · 2026-09-18
+# Verification record · v0.3 work-in-progress · 2026-09-19
 
 ## Environment
 
@@ -7,6 +7,8 @@ Windows, Node 24.19.0, npm 11.17.0. Chromium supplied by Playwright. The v0.2 pr
 The browser suite used Playwright 1.55.0 with Chromium 153.0.8010.12 (Playwright browser revision 1243). The browser binary was installed locally before the passing run.
 
 ## Automated checks
+
+The v0.3 friction slice adds simulation coverage for solid item occupancy and adjacency pickup, activity/carrying metabolism, v2 save defaults and spoilage progression, and automatic bed claiming. The existing 24-case suite remains covered; the new suite brings the current simulation total to 28 cases.
 
 `npm run build` checks strict TypeScript and produces the production bundle. `npm run format:check` checks maintained source/test/config formatting. `npm test` runs 24 meaningful headless cases, including the original foundation and v0.2 survival-loop cases:
 
