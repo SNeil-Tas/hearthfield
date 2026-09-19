@@ -16,8 +16,24 @@ import {
   isFoodSpoiled,
 } from './world';
 import { COOKED_MEAL_POINTS, COOKING_INPUT } from './definitions';
+import { DiagnosticLog, point } from './diagnostics';
 
-export function interruptJob(w: World, pawn: Pawn, reservations: Reservations) {
+export function interruptJob(
+  w: World,
+  pawn: Pawn,
+  reservations: Reservations,
+  diagnostics?: DiagnosticLog,
+  reason = 'interrupted',
+) {
+  diagnostics?.record(w, 'JOB_INTERRUPTED', {
+    entityId: pawn.id,
+    entityName: pawn.name,
+    targetId: pawn.job?.targetId,
+    jobType: pawn.job?.kind,
+    phase: pawn.job?.phase,
+    position: point(pawn),
+    reason,
+  });
   const station =
     pawn.job?.kind === 'cook' ? w.buildings.find((b) => b.id === pawn.job?.targetId) : undefined;
   if (station?.ingredientFresh) {
@@ -25,6 +41,13 @@ export function interruptJob(w: World, pawn: Pawn, reservations: Reservations) {
     station.ingredientFresh = 0;
     station.cookingProgress = 0;
     station.reservedBy = undefined;
+    diagnostics?.record(w, 'COOKING_STATION_RELEASED', {
+      entityId: pawn.id,
+      entityName: pawn.name,
+      targetId: station.id,
+      jobType: 'cook',
+      reason: 'job interrupted',
+    });
   }
   if (pawn.carrying) {
     drop(w, pawn, pawn.carrying.resource, pawn.carrying.quantity, pawn.carrying.foodType);
@@ -41,10 +64,19 @@ export function advanceJob(
   reservations: Reservations,
   grid: Uint8Array,
   sheltered: Set<number>,
+  diagnostics?: DiagnosticLog,
 ): boolean {
   const job = pawn.job;
   if (!job) return false;
   const finish = () => {
+    diagnostics?.record(w, 'JOB_COMPLETED', {
+      entityId: pawn.id,
+      entityName: pawn.name,
+      targetId: job.targetId,
+      jobType: job.kind,
+      phase: job.phase,
+      position: point(pawn),
+    });
     pawn.job = null;
     reservations.release(pawn.id);
   };
@@ -72,7 +104,15 @@ export function advanceJob(
   if (job.path.length) {
     const next = job.path[0]!;
     if (!grid[tileKey(w, next)]) {
-      cancel();
+      interruptJob(w, pawn, reservations, diagnostics, 'route invalidated by occupancy');
+      diagnostics?.record(w, 'PATH_FAILED', {
+        entityId: pawn.id,
+        entityName: pawn.name,
+        targetId: job.targetId,
+        jobType: job.kind,
+        reason: 'route invalidated by occupancy',
+        position: point(pawn),
+      });
       return false;
     }
     const dx = next.x - pawn.x,
@@ -92,10 +132,19 @@ export function advanceJob(
     }
     return false;
   }
+  if (job.progress === 0)
+    diagnostics?.record(w, 'JOB_STARTED', {
+      entityId: pawn.id,
+      entityName: pawn.name,
+      targetId: job.targetId,
+      jobType: job.kind,
+      phase: job.phase,
+      position: point(pawn),
+    });
   if (job.phase === 'source') {
     const item = w.items.find((i) => i.id === job.sourceId);
     if (!item) {
-      cancel();
+      interruptJob(w, pawn, reservations, diagnostics, 'source item missing');
       return false;
     }
     const amount = Math.min(
@@ -104,7 +153,7 @@ export function advanceJob(
       bp ? BUILDINGS[bp.kind].cost - bp.delivered : 12,
     );
     if (amount <= 0) {
-      cancel();
+      interruptJob(w, pawn, reservations, diagnostics, 'source amount unavailable');
       return false;
     }
     const path = findPath(
@@ -115,7 +164,15 @@ export function advanceJob(
       grid,
     );
     if (path === null) {
-      cancel();
+      interruptJob(w, pawn, reservations, diagnostics, 'source unreachable');
+      diagnostics?.record(w, 'PATH_FAILED', {
+        entityId: pawn.id,
+        entityName: pawn.name,
+        targetId: item.id,
+        jobType: job.kind,
+        reason: 'source unreachable',
+        position: point(pawn),
+      });
       return false;
     }
     pawn.carrying = {
@@ -124,6 +181,14 @@ export function advanceJob(
       foodType: foodType(item),
       foodKind: item.foodKind,
     };
+    diagnostics?.record(w, 'ITEM_PICKED_UP', {
+      entityId: pawn.id,
+      entityName: pawn.name,
+      targetId: item.id,
+      jobType: job.kind,
+      position: point(pawn),
+      values: { quantity: amount, resource: item.resource },
+    });
     item.quantity -= amount;
     if (item.resource === 'food' && foodType(item) === 'raw') {
       item.freshPoints = Math.max(0, freshPoints(item) - amount);
@@ -134,6 +199,14 @@ export function advanceJob(
       grid[tileKey(w, item)] = 1;
     }
     job.path = path;
+    diagnostics?.record(w, 'JOB_PHASE_CHANGED', {
+      entityId: pawn.id,
+      entityName: pawn.name,
+      targetId: job.targetId,
+      jobType: job.kind,
+      phase: 'target',
+      position: point(pawn),
+    });
     job.phase = 'target';
     return false;
   }
@@ -197,6 +270,14 @@ export function advanceJob(
     case 'haul': {
       if (pawn.carrying) {
         drop(w, job.destination, pawn.carrying.resource, pawn.carrying.quantity);
+        diagnostics?.record(w, 'ITEM_DROPPED', {
+          entityId: pawn.id,
+          entityName: pawn.name,
+          targetId: job.destination ? `${job.destination.x},${job.destination.y}` : undefined,
+          jobType: job.kind,
+          position: point(job.destination),
+          values: { quantity: pawn.carrying.quantity, resource: pawn.carrying.resource },
+        });
         grid[tileKey(w, job.destination)] = 0;
         pawn.carrying = null;
       }
@@ -206,6 +287,14 @@ export function advanceJob(
     case 'deliver': {
       if (bp && pawn.carrying) {
         bp.delivered += pawn.carrying.quantity;
+        diagnostics?.record(w, 'ITEM_DELIVERED', {
+          entityId: pawn.id,
+          entityName: pawn.name,
+          targetId: bp.id,
+          jobType: job.kind,
+          position: point(bp),
+          values: { quantity: pawn.carrying.quantity, resource: pawn.carrying.resource },
+        });
         pawn.carrying = null;
       }
       finish();
@@ -231,6 +320,14 @@ export function advanceJob(
       if (pawn.carrying) {
         building.ingredientFresh = (building.ingredientFresh ?? 0) + pawn.carrying.quantity;
         pawn.carrying = null;
+        diagnostics?.record(w, 'ITEM_DELIVERED_TO_BUFFER', {
+          entityId: pawn.id,
+          entityName: pawn.name,
+          targetId: building.id,
+          jobType: job.kind,
+          position: point(building),
+          values: { fresh: building.ingredientFresh },
+        });
         if ((building.ingredientFresh ?? 0) < COOKING_INPUT) {
           const next = w.items.find(
             (i) =>
@@ -272,6 +369,32 @@ export function advanceJob(
             `${pawn.name} prepared a simple meal (${COOKED_MEAL_POINTS} food points).`,
             'success',
           );
+          diagnostics?.record(w, 'COOKING_COMPLETED', {
+            entityId: pawn.id,
+            entityName: pawn.name,
+            targetId: building.id,
+            jobType: 'cook',
+            position: point(building),
+            values: { mealPoints: COOKED_MEAL_POINTS },
+          });
+          const meal = w.items[w.items.length - 1];
+          if (meal?.foodType === 'meal')
+            diagnostics?.record(w, 'MEAL_CREATED', {
+              entityId: pawn.id,
+              entityName: pawn.name,
+              targetId: meal.id,
+              jobType: 'cook',
+              position: point(meal),
+              values: { quantity: meal.quantity },
+            });
+          diagnostics?.record(w, 'COOKING_STATION_RELEASED', {
+            entityId: pawn.id,
+            entityName: pawn.name,
+            targetId: building.id,
+            jobType: 'cook',
+            reason: 'cooking completed',
+            position: point(building),
+          });
           finish();
           return true;
         }
@@ -316,10 +439,11 @@ export function advanceJob(
     case 'eat': {
       const food = w.items.find((i) => i.id === job.sourceId);
       if (!food || isFoodSpoiled(w, food)) {
-        cancel();
+        interruptJob(w, pawn, reservations, diagnostics, 'meal missing or spoiled');
         break;
       }
       if (job.progress >= 2) {
+        const before = pawn.hunger;
         food.quantity--;
         if (food.resource === 'food' && foodType(food) === 'raw')
           food.freshPoints = Math.max(0, freshPoints(food) - 1);
@@ -335,6 +459,14 @@ export function advanceJob(
         );
         pawn.moodBias = (pawn.moodBias ?? 0) + (foodType(food) === 'meal' ? 2 : -3);
         emit(w, `${pawn.name} stopped for a meal.`);
+        diagnostics?.record(w, 'FOOD_CONSUMED', {
+          entityId: pawn.id,
+          entityName: pawn.name,
+          targetId: food.id,
+          jobType: 'eat',
+          position: point(pawn),
+          values: { hungerBefore: before, hungerAfter: pawn.hunger },
+        });
         finish();
       }
       break;

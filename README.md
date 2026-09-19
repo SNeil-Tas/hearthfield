@@ -94,3 +94,8 @@ The prototype intentionally has no combat, raids, medicine, roof/temperature sim
 Food is measured in points. Raw stacks cap at 100 total points and track fresh/spoiled points separately; spoiled points become physical waste stacks capped at 25. Waste blocks movement and doubles spoilage for fresh food in an 8-neighbour ring. Indoor storage slows spoilage, while rain worsens exposed food. Meals use 100 fresh raw points and provide 80 hunger points.
 
 Hungry colonists reserve a cooking station for personal self-care, collect ingredients over multiple trips when necessary, and eat the resulting meal immediately. Cooking skill affects preparation speed, while Cook priority is not required for survival cooking. Save schema 4 migrates older food stacks to fresh-point defaults without deleting reserves. Composting is intentionally deferred.
+## Diagnostics
+
+Hearthfield v0.4.1 keeps a separate runtime diagnostic trace with a 5,000-event ring buffer. It is intentionally not part of normal colony saves, so save files remain compact; the trace resets when the app restarts or a save is loaded. Events are transition/action based rather than per-tick or per-movement.
+
+Open More → Diagnostics to mark a moment and export a self-contained JSON report. Supported Android browsers/PWA installs use the Web Share API for file sharing; otherwise the report downloads normally. When a colonist is selected, Copy Selected Colonist Debug copies a concise state snapshot to the clipboard.

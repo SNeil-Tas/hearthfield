@@ -2,6 +2,7 @@ import type { Pawn, World } from './types';
 import { findPath } from './pathfinding';
 import { needCandidates, rankCandidate, type Candidate } from './job-board';
 import { Reservations } from './reservations';
+import { DiagnosticLog, point } from './diagnostics';
 
 export function assignJob(
   w: World,
@@ -10,6 +11,7 @@ export function assignJob(
   reservations: Reservations,
   grid: Uint8Array,
   retries: Map<string, number>,
+  diagnostics?: DiagnosticLog,
 ) {
   const candidates = [...needCandidates(w, pawn), ...board]
     .map((c) => ({ candidate: c, rank: rankCandidate(pawn, c) }))
@@ -24,6 +26,14 @@ export function assignJob(
   // bounded scan small so a congested map cannot turn assignment into a full
   // world search every second.
   for (const { candidate: c } of candidates.slice(0, 2)) {
+    diagnostics?.record(w, 'JOB_CANDIDATE_CHOSEN', {
+      entityId: pawn.id,
+      entityName: pawn.name,
+      targetId: c.targetId ?? c.sourceId,
+      jobType: c.kind,
+      position: point(pawn),
+      values: { score: rankCandidate(pawn, c) },
+    });
     const path = findPath(
       w,
       pawn,
@@ -34,9 +44,34 @@ export function assignJob(
     const onward = c.source ? findPath(w, c.source, c.destination, c.adjacent, grid) : [];
     if (path === null || onward === null) {
       retries.set(`${pawn.id}:${c.keys.join(',')}`, w.tick + 100);
+      diagnostics?.record(w, 'PATH_FAILED', {
+        entityId: pawn.id,
+        entityName: pawn.name,
+        targetId: c.targetId ?? c.sourceId,
+        jobType: c.kind,
+        reason: 'unreachable',
+        position: point(pawn),
+      });
+      diagnostics?.record(w, 'JOB_RETRY_COOLDOWN', {
+        entityId: pawn.id,
+        entityName: pawn.name,
+        targetId: c.targetId ?? c.sourceId,
+        jobType: c.kind,
+        reason: 'unreachable',
+        values: { untilTick: w.tick + 100 },
+      });
       continue;
     }
-    if (!reservations.claim(c.keys, pawn.id)) continue;
+    if (!reservations.claim(c.keys, pawn.id)) {
+      diagnostics?.record(w, 'RESERVATION_DENIED', {
+        entityId: pawn.id,
+        entityName: pawn.name,
+        targetId: c.targetId ?? c.sourceId,
+        jobType: c.kind,
+        reason: 'owned by another entity',
+      });
+      continue;
+    }
     pawn.job = {
       kind: c.kind,
       sourceId: c.sourceId,
@@ -48,6 +83,31 @@ export function assignJob(
       keys: c.keys,
       amount: c.amount,
     };
+    diagnostics?.record(w, 'JOB_ASSIGNED', {
+      entityId: pawn.id,
+      entityName: pawn.name,
+      targetId: c.targetId ?? c.sourceId,
+      jobType: c.kind,
+      phase: pawn.job.phase,
+      position: point(pawn),
+    });
+    if (c.kind === 'eat')
+      diagnostics?.record(w, 'FOOD_PLAN_EAT_SELECTED', {
+        entityId: pawn.id,
+        entityName: pawn.name,
+        targetId: c.sourceId,
+        jobType: 'eat',
+        phase: 'eat',
+        position: point(pawn),
+      });
+    if (c.kind === 'cook')
+      diagnostics?.record(w, 'FOOD_PLAN_COOK_SELECTED', {
+        entityId: pawn.id,
+        entityName: pawn.name,
+        targetId: c.targetId,
+        jobType: 'cook',
+        position: point(pawn),
+      });
     return;
   }
 }

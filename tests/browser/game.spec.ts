@@ -197,10 +197,24 @@ test('production diagnostics expose the build and update check', async ({ page }
   await page.goto('http://127.0.0.1:4187/');
   await expect(page.locator('.colonist')).toHaveCount(3);
   await page.getByRole('button', { name: 'More', exact: true }).click();
-  await expect(page.locator('.panel')).toContainText('Hearthfield v0.4.0');
+  await expect(page.locator('.panel')).toContainText('Hearthfield v0.4.1');
   await expect(page.locator('.panel')).toContainText('Build local');
   await page.getByRole('button', { name: 'Check for updates' }).click();
   await expect(page.locator('.toast')).toContainText(/up to date|Could not check/);
+});
+
+test('diagnostics can mark, export, and copy selected colonist state', async ({ page }) => {
+  await start(page);
+  await page.getByRole('button', { name: 'More', exact: true }).click();
+  await page.getByRole('button', { name: /Diagnostics/ }).click();
+  await expect(page.getByRole('button', { name: 'Mark Debug Moment' })).toBeVisible();
+  await page.getByRole('button', { name: 'Mark Debug Moment' }).click();
+  const download = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Export Debug Report' }).click();
+  expect((await download).suggestedFilename()).toMatch(/^hearthfield-debug-.*\.json$/);
+  await page.getByRole('button', { name: 'Close panel' }).click();
+  await page.getByRole('button', { name: /Select Rowan/ }).click();
+  await expect(page.getByRole('button', { name: /Copy Selected Colonist Debug/ })).toBeVisible();
 });
 
 test('area gathering, cancelled touch and pinch in placement mode do not issue stray orders', async ({

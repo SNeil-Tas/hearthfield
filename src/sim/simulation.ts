@@ -9,9 +9,11 @@ import type { Command, World } from './types';
 import { BUILDINGS, CROP_GROWTH_TICKS } from './definitions';
 import { advanceFoodSpoilage, inside, sameTile, shelteredTiles, tileKey } from './world';
 import { emit } from './events';
+import { DiagnosticLog, point } from './diagnostics';
 
 export class Simulation {
-  readonly reservations = new Reservations();
+  readonly diagnostics = new DiagnosticLog();
+  readonly reservations: Reservations;
   private grid: Uint8Array;
   private board: Candidate[] = [];
   private dirty = true;
@@ -19,11 +21,24 @@ export class Simulation {
   private retries = new Map<string, number>();
   private sheltered: Set<number>;
   constructor(public world: World) {
+    this.reservations = new Reservations((action, key, owner) =>
+      this.diagnostics.record(world, `RESERVATION_${action.toUpperCase()}`, {
+        entityId: owner,
+        targetId: key,
+        reason: action,
+      }),
+    );
     this.grid = navigationGrid(world);
     this.sheltered = shelteredTiles(world);
     for (const pawn of world.pawns)
       if (pawn.job && !this.reservations.claim(pawn.job.keys, pawn.id))
-        interruptJob(world, pawn, this.reservations);
+        interruptJob(
+          world,
+          pawn,
+          this.reservations,
+          this.diagnostics,
+          'save reservation could not be restored',
+        );
   }
   command(command: Command) {
     const changed = applyCommand(this.world, command, this.reservations);
@@ -77,11 +92,43 @@ export class Simulation {
     for (let i = 0; i < w.pawns.length; i++) {
       const pawn = w.pawns[i]!;
       if (w.tick % 10 === 0) {
+        const hungerBefore = pawn.hunger;
+        const restBefore = pawn.rest;
         updateNeeds(w, pawn);
-        if (shouldInterrupt(pawn)) interruptJob(w, pawn, this.reservations);
+        if (hungerBefore >= 35 && pawn.hunger < 35)
+          this.diagnostics.record(w, 'HUNGER_THRESHOLD_CROSSED', {
+            entityId: pawn.id,
+            entityName: pawn.name,
+            reason: 'hungry',
+            values: { before: hungerBefore, after: pawn.hunger, threshold: 35 },
+          });
+        if (hungerBefore >= 18 && pawn.hunger < 18)
+          this.diagnostics.record(w, 'HUNGER_THRESHOLD_CROSSED', {
+            entityId: pawn.id,
+            entityName: pawn.name,
+            reason: 'critical',
+            values: { before: hungerBefore, after: pawn.hunger, threshold: 18 },
+          });
+        if (restBefore >= 28 && pawn.rest < 28)
+          this.diagnostics.record(w, 'REST_THRESHOLD_CROSSED', {
+            entityId: pawn.id,
+            entityName: pawn.name,
+            reason: 'critical rest',
+            values: { before: restBefore, after: pawn.rest, threshold: 28 },
+          });
+        if (shouldInterrupt(pawn))
+          interruptJob(w, pawn, this.reservations, this.diagnostics, 'need threshold');
       }
       if (!pawn.job && (w.tick + i * 3) % 10 === 0)
-        assignJob(w, pawn, this.board, this.reservations, this.grid, this.retries);
+        assignJob(
+          w,
+          pawn,
+          this.board,
+          this.reservations,
+          this.grid,
+          this.retries,
+          this.diagnostics,
+        );
       if (!pawn.job && w.blueprints.some((b) => BUILDINGS[b.kind].blocks && sameTile(b, pawn))) {
         const x = Math.round(pawn.x),
           y = Math.round(pawn.y);
@@ -105,7 +152,7 @@ export class Simulation {
           };
       }
       const jobKind = pawn.job?.kind;
-      if (advanceJob(w, pawn, this.reservations, this.grid, this.sheltered)) {
+      if (advanceJob(w, pawn, this.reservations, this.grid, this.sheltered, this.diagnostics)) {
         this.grid = navigationGrid(w);
         this.dirty = true;
         if (jobKind === 'build' || jobKind === 'deconstruct') this.topologyDirty = true;

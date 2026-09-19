@@ -15,6 +15,7 @@ import { Interface, type DebugMetrics } from './ui/interface';
 import { initialUI, type Panel, type Tool } from './ui/state';
 import { selectAt } from './ui/selection';
 import { APP_VERSION, BUILD_ID } from './build';
+import { buildDebugReport, colonistDebugText } from './sim/diagnostics';
 
 async function bootstrap() {
   const store = new SaveStore();
@@ -113,6 +114,45 @@ async function bootstrap() {
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
+  const debugMetadata = () => ({
+    appVersion: APP_VERSION,
+    buildId: BUILD_ID,
+    saveSchema: 4,
+    userAgent: navigator.userAgent,
+    viewport: `${window.innerWidth}×${window.innerHeight}`,
+    dpr: window.devicePixelRatio || 1,
+    standalone: metrics.standalone,
+    serviceWorker: metrics.serviceWorker,
+  });
+  const exportDebug = async () => {
+    const report = buildDebugReport(
+      sim.world,
+      sim.reservations,
+      sim.diagnostics,
+      debugMetadata(),
+      clock.speed,
+    );
+    const json = JSON.stringify(report, null, 2);
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 16);
+    const filename = `hearthfield-debug-${stamp}.json`;
+    const file = new File([json], filename, { type: 'application/json' });
+    try {
+      if (navigator.share && navigator.canShare?.({ files: [file] })) {
+        await navigator.share({ title: 'Hearthfield debug report', files: [file] });
+        notify('Debug report ready to share.');
+        return;
+      }
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') return;
+    }
+    const url = URL.createObjectURL(file),
+      a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    notify('Debug report downloaded.');
+  };
   const action = (name: string, value: string) => {
     if (!ownsSession && ['new', 'import', 'save'].includes(name)) {
       notify('Close the other colony tab, then reload this one to enable saving.', 8000);
@@ -198,6 +238,26 @@ async function bootstrap() {
       case 'debug':
         ui.debug = !ui.debug;
         break;
+      case 'mark-debug':
+        sim.diagnostics.marker(sim.world);
+        notify('Debug moment marked. Let the game run briefly, then export the report.');
+        break;
+      case 'export-debug':
+        void exportDebug();
+        break;
+      case 'copy-debug': {
+        const pawn = sim.world.pawns.find((p) => p.id === ui.selectedId);
+        if (pawn) {
+          const text = colonistDebugText(sim.world, pawn, sim.reservations);
+          if (navigator.clipboard)
+            void navigator.clipboard
+              .writeText(text)
+              .then(() => notify('Colonist debug state copied.'))
+              .catch(() => notify(text, 12000));
+          else notify(text, 12000);
+        }
+        break;
+      }
       case 'update':
         swRegistration?.waiting?.postMessage({ type: 'SKIP_WAITING' });
         break;
