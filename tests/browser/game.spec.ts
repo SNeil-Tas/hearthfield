@@ -197,7 +197,7 @@ test('production diagnostics expose the build and update check', async ({ page }
   await page.goto('http://127.0.0.1:4187/');
   await expect(page.locator('.colonist')).toHaveCount(3);
   await page.getByRole('button', { name: 'More', exact: true }).click();
-  await expect(page.locator('.panel')).toContainText('Hearthfield v0.4.1');
+  await expect(page.locator('.panel')).toContainText('Hearthfield v0.5.0');
   await expect(page.locator('.panel')).toContainText('Build local');
   await page.getByRole('button', { name: 'Check for updates' }).click();
   await expect(page.locator('.toast')).toContainText(/up to date|Could not check/);

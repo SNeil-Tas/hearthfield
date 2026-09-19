@@ -1,11 +1,11 @@
-import { BUILDINGS, NODES, TERRAIN } from '../sim/definitions';
+import { BUILDINGS, NODES, TERRAIN, SPOILED_FOOD_LIFETIME } from '../sim/definitions';
 import type { WeatherKind } from '../sim/types';
 import { Reservations } from '../sim/reservations';
 import { interruptJob } from '../sim/jobs';
 import type { World } from '../sim/types';
 
 export interface SaveEnvelope {
-  version: 1 | 2 | 3 | 4;
+  version: 1 | 2 | 3 | 4 | 5;
   savedAt: number;
   checksum: string;
   payload: string;
@@ -17,9 +17,10 @@ export function checksum(text: string) {
 }
 export function encode(w: World): SaveEnvelope {
   const payload = JSON.stringify(w);
-  return { version: 4, savedAt: Date.now(), checksum: checksum(payload), payload };
+  return { version: 5, savedAt: Date.now(), checksum: checksum(payload), payload };
 }
-function migrate(world: any, version: 1 | 2 | 3 | 4) {
+function migrate(world: any, version: 1 | 2 | 3 | 4 | 5) {
+  world.dumpZones ??= [];
   if (version === 1) {
     world.crops ??= [];
     world.growingZones ??= [];
@@ -40,7 +41,27 @@ function migrate(world: any, version: 1 | 2 | 3 | 4) {
         item.foodKind ??= 'staple';
       }
     }
+    if (item.resource === 'waste' && !item.expiryBatches)
+      item.expiryBatches = [
+        { quantity: item.quantity, expiresAt: (world.tick ?? 0) + SPOILED_FOOD_LIFETIME },
+      ];
   }
+  world.items = (world.items ?? []).filter((item: any) => {
+    if (item.resource !== 'food' || item.foodType !== 'raw') return true;
+    const fresh = item.freshPoints ?? item.quantity;
+    const spoiled = item.spoiledPoints ?? 0;
+    if (fresh <= 1e-6 && spoiled <= 1e-6) return false;
+    if (fresh <= 1e-6 && spoiled > 0) {
+      item.resource = 'waste';
+      delete item.foodType;
+      delete item.foodKind;
+      item.quantity = spoiled;
+      item.expiryBatches = [
+        { quantity: spoiled, expiresAt: (world.tick ?? 0) + SPOILED_FOOD_LIFETIME },
+      ];
+    }
+    return true;
+  });
   for (const building of world.buildings ?? []) {
     building.ingredientFresh ??= 0;
     building.cookingProgress ??= 0;
@@ -56,6 +77,10 @@ function migrate(world: any, version: 1 | 2 | 3 | 4) {
       pawn.moodBias ??= 0;
       pawn.productivity ??= 1;
     }
+  }
+  for (const pawn of world.pawns ?? []) {
+    pawn.rotExposure ??= 0;
+    pawn.rotHandledPenalty ??= 0;
   }
   return world;
 }
@@ -83,6 +108,7 @@ export function validateWorld(value: unknown): asserts value is World {
     'buildings',
     'blueprints',
     'stockpiles',
+    'dumpZones',
     'pawns',
     'events',
   ] as const)
@@ -146,13 +172,16 @@ export function validateWorld(value: unknown): asserts value is World {
     spoiledPoints?: number;
   }) =>
     ['wood', 'stone', 'food', 'waste'].includes(i.resource) &&
-    integer(i.quantity, 1, 100000) &&
+    ((i.resource === 'food' && i.foodType === 'raw') || i.resource === 'waste'
+      ? finite(i.quantity, 0, 100000) && i.quantity > 0
+      : integer(i.quantity, 1, 100000)) &&
     (i.resource !== 'food' || !i.foodType || ['raw', 'meal'].includes(i.foodType)) &&
     (i.freshPoints === undefined || finite(i.freshPoints, 0, 100000)) &&
     (i.spoiledPoints === undefined || finite(i.spoiledPoints, 0, 100000));
   if (
     w.items.some((i) => !validStack(i)) ||
-    w.stockpiles.some((k) => !integer(k, 0, w.width * w.height - 1))
+    w.stockpiles.some((k) => !integer(k, 0, w.width * w.height - 1)) ||
+    w.dumpZones.some((k) => !integer(k, 0, w.width * w.height - 1))
   )
     throw new Error('Invalid inventory.');
   if (
@@ -190,7 +219,7 @@ export function validateWorld(value: unknown): asserts value is World {
 export function decode(raw: unknown): { world: World; savedAt: number } {
   if (!raw || typeof raw !== 'object') throw new Error('Unrecognised save.');
   const e = raw as SaveEnvelope;
-  if (e.version !== 1 && e.version !== 2 && e.version !== 3 && e.version !== 4)
+  if (e.version !== 1 && e.version !== 2 && e.version !== 3 && e.version !== 4 && e.version !== 5)
     throw new Error('This save needs a different game version.');
   if (
     typeof e.payload !== 'string' ||

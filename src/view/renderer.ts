@@ -76,6 +76,17 @@ export class Renderer {
       c.lineWidth = 1;
       c.strokeRect(p.x - z / 2 + 1, p.y - z / 2 + 1, z - 2, z - 2);
     }
+    for (const key of w.dumpZones) {
+      const tile = { x: key % w.width, y: Math.floor(key / w.width) };
+      if (!visible(tile)) continue;
+      const p = cam.screen(tile);
+      c.fillStyle = '#9d6f6348';
+      c.fillRect(p.x - z / 2 + 1, p.y - z / 2 + 1, z - 2, z - 2);
+      c.strokeStyle = '#d49a7a99';
+      c.setLineDash([3, 3]);
+      c.strokeRect(p.x - z / 2 + 1, p.y - z / 2 + 1, z - 2, z - 2);
+      c.setLineDash([]);
+    }
     for (const key of w.growingZones) {
       const tile = { x: key % w.width, y: Math.floor(key / w.width) };
       if (!visible(tile)) continue;

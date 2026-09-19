@@ -32,11 +32,17 @@ export interface Stack {
   foodKind?: 'berries' | 'staple';
   freshPoints?: number;
   spoiledPoints?: number;
+  expiryBatches?: ExpiryBatch[];
 }
 export interface Item extends Point, Stack {
   id: string;
   spoilsAt?: number;
   spoiled?: boolean;
+  expiryBatches?: ExpiryBatch[];
+}
+export interface ExpiryBatch {
+  quantity: number;
+  expiresAt: number;
 }
 export interface ResourceNode extends Point {
   id: string;
@@ -89,6 +95,9 @@ export interface Pawn extends Point {
   moodBias?: number;
   activity?: ActivityKind;
   productivity?: number;
+  rotExposure?: number;
+  rotHandledUntil?: number;
+  rotHandledPenalty?: number;
 }
 export interface GameEvent {
   tick: number;
@@ -109,6 +118,7 @@ export interface World {
   buildings: Building[];
   blueprints: Blueprint[];
   stockpiles: number[];
+  dumpZones: number[];
   pawns: Pawn[];
   events: GameEvent[];
   weather: WeatherKind;
@@ -118,6 +128,7 @@ export type Command =
   | { type: 'designate'; points: Point[]; cancel?: boolean }
   | { type: 'blueprint'; points: Point[]; kind: BuildingKind }
   | { type: 'stockpile'; points: Point[] }
+  | { type: 'dump'; points: Point[]; cancel?: boolean }
   | { type: 'growing'; points: Point[]; cancel?: boolean }
   | { type: 'deconstruct'; points: Point[] }
   | { type: 'priority'; pawnId: string; work: WorkType; value: number };

@@ -36,6 +36,22 @@ export function applyCommand(w: World, command: Command, reservations: Reservati
         w.growingZones.push(key);
         changed++;
       }
+    } else if (command.type === 'dump') {
+      const key = tileKey(w, p);
+      const valid =
+        inside(w, p) &&
+        !w.buildings.some((b) => sameTile(b, p)) &&
+        !w.blueprints.some((b) => sameTile(b, p)) &&
+        w.terrain[key] !== 'water';
+      if (command.cancel) {
+        if (w.dumpZones.includes(key)) {
+          w.dumpZones = w.dumpZones.filter((dumpKey) => dumpKey !== key);
+          changed++;
+        }
+      } else if (valid && !w.dumpZones.includes(key)) {
+        w.dumpZones.push(key);
+        changed++;
+      }
     } else if (command.type === 'deconstruct') {
       const building = w.buildings.find((b) => sameTile(b, p));
       if (building && !building.deconstructing) {
@@ -66,6 +82,10 @@ export function applyCommand(w: World, command: Command, reservations: Reservati
           for (const pawn of w.pawns)
             if (pawn.job?.kind === 'haul' && sameTile(pawn.job.destination, p))
               interruptJob(w, pawn, reservations);
+        }
+        if (w.dumpZones.includes(key)) {
+          w.dumpZones = w.dumpZones.filter((dumpKey) => dumpKey !== key);
+          changed++;
         }
         if (w.growingZones.includes(key)) {
           w.growingZones = w.growingZones.filter((k) => k !== key);

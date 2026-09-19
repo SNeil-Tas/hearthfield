@@ -28,6 +28,7 @@ export function generateWorld(seed = Date.now() >>> 0): World {
     buildings: [],
     blueprints: [],
     stockpiles: [],
+    dumpZones: [],
     pawns: [],
     events: [],
     weather: 'clear',

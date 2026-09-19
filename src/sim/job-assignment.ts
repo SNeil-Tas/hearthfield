@@ -18,6 +18,15 @@ export function assignJob(
     .filter(
       ({ candidate, rank }) =>
         Number.isFinite(rank) &&
+        (!candidate.sourceId ||
+          w.items.some(
+            (item) =>
+              item.id === candidate.sourceId &&
+              item.quantity > 1e-6 &&
+              (candidate.kind !== 'cook' ||
+                item.freshPoints === undefined ||
+                item.freshPoints >= 1),
+          )) &&
         reservations.available(candidate.keys, pawn.id) &&
         (retries.get(`${pawn.id}:${candidate.keys.join(',')}`) ?? 0) <= w.tick,
     )
@@ -106,6 +115,14 @@ export function assignJob(
         entityName: pawn.name,
         targetId: c.targetId,
         jobType: 'cook',
+        position: point(pawn),
+      });
+    if (c.kind === 'separate')
+      diagnostics?.record(w, 'FOOD_SEPARATION_REQUIRED', {
+        entityId: pawn.id,
+        entityName: pawn.name,
+        targetId: c.sourceId,
+        jobType: 'separate',
         position: point(pawn),
       });
     return;

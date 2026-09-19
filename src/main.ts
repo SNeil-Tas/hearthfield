@@ -117,7 +117,7 @@ async function bootstrap() {
   const debugMetadata = () => ({
     appVersion: APP_VERSION,
     buildId: BUILD_ID,
-    saveSchema: 4,
+    saveSchema: 5,
     userAgent: navigator.userAgent,
     viewport: `${window.innerWidth}×${window.innerHeight}`,
     dpr: window.devicePixelRatio || 1,
@@ -338,6 +338,7 @@ async function bootstrap() {
     if (ui.tool === 'gather' || ui.tool === 'cancel')
       changed = sim.command({ type: 'designate', points, cancel: ui.tool === 'cancel' });
     else if (ui.tool === 'stockpile') changed = sim.command({ type: 'stockpile', points });
+    else if (ui.tool === 'dump') changed = sim.command({ type: 'dump', points });
     else if (ui.tool === 'grow') changed = sim.command({ type: 'growing', points });
     else if (ui.tool !== 'inspect')
       changed = sim.command({ type: 'blueprint', points, kind: ui.tool });

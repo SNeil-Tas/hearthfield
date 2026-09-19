@@ -7,7 +7,14 @@ import { navigationGrid } from './pathfinding';
 import { Reservations } from './reservations';
 import type { Command, World } from './types';
 import { BUILDINGS, CROP_GROWTH_TICKS } from './definitions';
-import { advanceFoodSpoilage, inside, sameTile, shelteredTiles, tileKey } from './world';
+import {
+  advanceFoodSpoilage,
+  advanceWasteDecay,
+  inside,
+  sameTile,
+  shelteredTiles,
+  tileKey,
+} from './world';
 import { emit } from './events';
 import { DiagnosticLog, point } from './diagnostics';
 
@@ -61,6 +68,7 @@ export class Simulation {
     }
     if (w.tick % 100 === 0) {
       for (const item of w.items) advanceFoodSpoilage(w, item, this.sheltered);
+      advanceWasteDecay(w);
       for (const pawn of w.pawns) {
         if (pawn.illnessUntil !== undefined && pawn.illnessUntil <= w.tick) {
           pawn.illnessUntil = undefined;

@@ -33,7 +33,7 @@ export function panelHTML(panel: Panel, w: World, debug: boolean) {
           )
           .join(
             '',
-          )}${toolButton('stockpile', 'Stockpile', 'Drag an area · Store physical supplies')}${toolButton('grow', 'Growing zone', 'Drag fertile ground · Sow grain', 'leaf')}</div><p class="panel-note">Place a plan. Your colonists deliver the materials and build it.</p>`
+          )}${toolButton('stockpile', 'Stockpile', 'Drag an area · Store physical supplies')}${toolButton('dump', 'Dump zone', 'Drag an area · Place spoiled food')}${toolButton('grow', 'Growing zone', 'Drag fertile ground · Sow grain', 'leaf')}</div><p class="panel-note">Place a plan. Your colonists deliver the materials and build it.</p>`
       );
     case 'orders':
       return (
@@ -134,16 +134,16 @@ export function contextHTML(w: World, ui: UIState, owner?: string) {
     const freshness =
       item.resource === 'food'
         ? foodType(item) === 'raw'
-          ? `Fresh: ${Math.round(freshPoints(item))}<br>Spoiled: ${Math.round(spoiledPoints(item))}<br>Total: ${item.quantity}${hasAdjacentWaste(w, item) ? '<br>Spoilage: 2× · adjacent waste' : ''}`
+          ? `Fresh: ${freshPoints(item).toFixed(1)}<br>Spoiled: ${spoiledPoints(item).toFixed(1)}<br>Total: ${item.quantity.toFixed(1)}${spoiledPoints(item) > 10 ? '<br>Separation required' : ''}${hasAdjacentWaste(w, item) ? '<br>Spoilage: 2× · adjacent waste' : ''}`
           : 'Cooked meal · 80 food points'
         : '';
-    content = `<span class="eyebrow">PHYSICAL SUPPLIES</span><h3>${item.quantity} ${item.resource === 'waste' ? 'spoiled food waste' : item.foodType === 'meal' ? 'meal' : item.resource}</h3><p>${freshness}${freshness ? '<br>' : ''}${w.stockpiles.includes(tileKey(w, item)) ? 'In a stockpile' : 'On the ground · Awaiting hauling'}</p>`;
+    content = `<span class="eyebrow">PHYSICAL SUPPLIES</span><h3>${item.quantity.toFixed(item.resource === 'waste' ? 1 : 0)} ${item.resource === 'waste' ? 'spoiled food' : item.foodType === 'meal' ? 'meal' : item.resource}</h3><p>${freshness}${freshness ? '<br>' : ''}${w.dumpZones.includes(tileKey(w, item)) ? 'In a Dump zone · Decays naturally' : w.stockpiles.includes(tileKey(w, item)) ? 'In a stockpile' : 'On the ground · Awaiting hauling'}</p>`;
   } else if (crop) {
     content = `<span class="eyebrow">GRAIN CROP</span><h3>${crop.growth >= 1 ? 'Ready to harvest' : crop.growth < 0.1 ? 'Freshly sown' : 'Growing'}</h3><p>${Math.round(crop.growth * 100)}% grown · Plants work will tend it.</p>`;
   } else if (ui.selectedTile) {
     const terrain = w.terrain[tileKey(w, ui.selectedTile)];
     if (!terrain) return '';
-    content = `<span class="eyebrow">${ui.selectedTile.x}, ${ui.selectedTile.y}</span><h3>${TERRAIN[terrain].label}</h3><p>${w.stockpiles.includes(tileKey(w, ui.selectedTile)) ? 'Stockpile · Accepts wood, stone and food' : TERRAIN[terrain].passable ? 'Open ground. A place for something new.' : 'Impassable water.'}</p>`;
+    content = `<span class="eyebrow">${ui.selectedTile.x}, ${ui.selectedTile.y}</span><h3>${TERRAIN[terrain].label}</h3><p>${w.dumpZones.includes(tileKey(w, ui.selectedTile)) ? 'Dump zone · accepts spoiled food and waste' : w.stockpiles.includes(tileKey(w, ui.selectedTile)) ? 'Stockpile · Accepts wood, stone and food' : TERRAIN[terrain].passable ? 'Open ground. A place for something new.' : 'Impassable water.'}</p>`;
   } else return '';
   if (ui.debug && e)
     content += `<code>${esc(e.id)} · ${e.x.toFixed(1)}, ${e.y.toFixed(1)}${owner ? `<br>Reserved: ${esc(owner)}` : ''}</code>`;

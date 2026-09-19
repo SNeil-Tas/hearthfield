@@ -19,6 +19,12 @@ export class Reservations {
         this.onChange?.('released', key, owner);
       }
   }
+  releaseKey(key: string, owner: string) {
+    if (this.owners.get(key) === owner) {
+      this.owners.delete(key);
+      this.onChange?.('released', key, owner);
+    }
+  }
   owner(key: string) {
     return this.owners.get(key);
   }

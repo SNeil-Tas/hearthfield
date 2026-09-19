@@ -1,4 +1,5 @@
 import type { Pawn, World, ActivityKind } from './types';
+import { distance } from './world';
 const costs: Record<ActivityKind, [number, number]> = {
   sleeping: [0.22, 0],
   resting: [0.32, 0.05],
@@ -36,6 +37,16 @@ export function updateNeeds(w: World, pawn: Pawn) {
   if (activity !== 'sleeping') pawn.rest = Math.max(0, pawn.rest - restCost * 0.1);
   if (pawn.hunger <= 0) pawn.health = Math.max(1, pawn.health - 0.25);
   else if (pawn.hunger > 55 && pawn.rest > 50) pawn.health = Math.min(100, pawn.health + 0.08);
+  const nearbyRot = w.items
+    .filter((item) => item.resource === 'waste' && distance(item, pawn) <= 5)
+    .reduce((total, item) => total + item.quantity, 0);
+  pawn.rotExposure = Math.max(
+    0,
+    Math.min(100, (pawn.rotExposure ?? 0) + (nearbyRot > 0 ? Math.min(6, nearbyRot / 10) : -3)),
+  );
+  const exposurePenalty = pawn.rotExposure >= 60 ? -4 : pawn.rotExposure >= 20 ? -2 : 0;
+  const handledPenalty =
+    pawn.rotHandledUntil && pawn.rotHandledUntil > w.tick ? -(pawn.rotHandledPenalty ?? 2) : 0;
   pawn.mood = Math.max(
     0,
     Math.min(
@@ -45,6 +56,8 @@ export function updateNeeds(w: World, pawn: Pawn) {
           pawn.rest * 0.4 +
           pawn.health * 0.15 +
           (pawn.moodBias ?? 0) +
+          exposurePenalty +
+          handledPenalty +
           (ill ? -8 : 0),
       ),
     ),

@@ -1,5 +1,12 @@
-import { TERRAIN, BUILDINGS, FOOD_STACK_CAP, SPOILED_STACK_CAP } from './definitions';
-import type { FoodType, Point, Resource, World } from './types';
+import {
+  TERRAIN,
+  BUILDINGS,
+  FOOD_STACK_CAP,
+  SPOILED_STACK_CAP,
+  SPOILED_FOOD_LIFETIME,
+  SPOILAGE_SEPARATION_THRESHOLD,
+} from './definitions';
+import type { ExpiryBatch, FoodType, Point, Resource, World } from './types';
 
 export const tileKey = (w: World, p: Point) => Math.round(p.y) * w.width + Math.round(p.x);
 export const sameTile = (a: Point, b: Point) =>
@@ -63,10 +70,15 @@ export function drop(
   type: FoodType = 'raw',
   foodKind: 'berries' | 'staple' = 'staple',
 ) {
-  let remaining = Math.max(0, Math.round(quantity));
-  while (remaining > 0) {
+  let remaining =
+    resource === 'food' && type === 'raw'
+      ? Math.max(0, quantity)
+      : Math.max(0, Math.round(quantity));
+  while (remaining > 1e-6) {
     const amount =
-      resource === 'food' && type === 'raw' ? Math.min(FOOD_STACK_CAP, remaining) : remaining;
+      resource === 'food' && type === 'raw'
+        ? Math.min(FOOD_STACK_CAP, remaining)
+        : Math.max(1, Math.round(remaining));
     w.items.push({
       id: nextId(w, 'item'),
       x: Math.round(p.x),
@@ -96,8 +108,24 @@ export function dropFood(
   drop(w, p, 'food', quantity, type, foodKind);
 }
 export function dropWaste(w: World, p: Point, quantity: number) {
-  let remaining = Math.max(0, Math.round(quantity));
-  while (remaining > 0) {
+  addSpoiledFood(w, p, quantity, w.tick + SPOILED_FOOD_LIFETIME);
+}
+export function addSpoiledFood(w: World, p: Point, quantity: number, expiresAt: number) {
+  let remaining = Math.max(0, quantity);
+  const candidates = w.items.filter(
+    (item) =>
+      item.resource === 'waste' && sameTile(item, p) && (item.expiryBatches?.length ?? 0) > 0,
+  );
+  for (const item of candidates) {
+    const capacity = SPOILED_STACK_CAP - item.quantity;
+    if (capacity <= 1e-6) continue;
+    const amount = Math.min(capacity, remaining);
+    item.quantity += amount;
+    item.expiryBatches = [...(item.expiryBatches ?? []), { quantity: amount, expiresAt }];
+    remaining -= amount;
+    if (remaining <= 1e-6) return;
+  }
+  while (remaining > 1e-6) {
     const amount = Math.min(SPOILED_STACK_CAP, remaining);
     w.items.push({
       id: nextId(w, 'waste'),
@@ -105,23 +133,83 @@ export function dropWaste(w: World, p: Point, quantity: number) {
       y: Math.round(p.y),
       resource: 'waste',
       quantity: amount,
+      expiryBatches: [{ quantity: amount, expiresAt }],
     });
     remaining -= amount;
+  }
+}
+export function dropStack(
+  w: World,
+  p: Point,
+  stack: {
+    resource: Resource;
+    quantity: number;
+    foodType?: FoodType;
+    foodKind?: 'berries' | 'staple';
+    expiryBatches?: ExpiryBatch[];
+  },
+) {
+  if (stack.resource === 'waste') {
+    if (stack.expiryBatches?.length) {
+      for (const batch of stack.expiryBatches)
+        addSpoiledFood(w, p, batch.quantity, batch.expiresAt);
+    } else {
+      addSpoiledFood(w, p, stack.quantity, w.tick + SPOILED_FOOD_LIFETIME);
+    }
+    return;
+  }
+  drop(w, p, stack.resource, stack.quantity, stack.foodType, stack.foodKind);
+}
+export function takeExpiryBatches(item: { expiryBatches?: ExpiryBatch[] }, quantity: number) {
+  let remaining = quantity;
+  const taken: ExpiryBatch[] = [];
+  const kept: ExpiryBatch[] = [];
+  for (const batch of item.expiryBatches ?? []) {
+    const amount = Math.min(batch.quantity, Math.max(0, remaining));
+    if (amount > 1e-6) taken.push({ quantity: amount, expiresAt: batch.expiresAt });
+    if (batch.quantity - amount > 1e-6)
+      kept.push({ quantity: batch.quantity - amount, expiresAt: batch.expiresAt });
+    remaining -= amount;
+  }
+  item.expiryBatches = kept;
+  return taken;
+}
+export function requiresFoodSeparation(item: { resource: Resource; spoiledPoints?: number }) {
+  return item.resource === 'food' && spoiledPoints(item) > SPOILAGE_SEPARATION_THRESHOLD;
+}
+export function isDumpTile(w: World, p: Point) {
+  return w.dumpZones.includes(tileKey(w, p));
+}
+export function advanceWasteDecay(w: World) {
+  for (const item of [...w.items]) {
+    if (item.resource !== 'waste' || !item.expiryBatches?.length) continue;
+    const remaining = item.expiryBatches.filter((batch) => batch.expiresAt > w.tick);
+    const quantity = remaining.reduce((total, batch) => total + batch.quantity, 0);
+    if (quantity <= 1e-6) w.items = w.items.filter((candidate) => candidate.id !== item.id);
+    else {
+      item.expiryBatches = remaining;
+      item.quantity = quantity;
+    }
   }
 }
 export function foodType(item: { resource: Resource; foodType?: FoodType }): FoodType {
   return item.resource === 'food' && item.foodType === 'meal' ? 'meal' : 'raw';
 }
 export function resourceTotal(w: World, resource: Resource) {
-  return (
+  const total =
     w.items.filter((i) => i.resource === resource).reduce((n, i) => n + i.quantity, 0) +
-    w.pawns.reduce((n, p) => n + (p.carrying?.resource === resource ? p.carrying.quantity : 0), 0)
-  );
+    w.pawns.reduce((n, p) => n + (p.carrying?.resource === resource ? p.carrying.quantity : 0), 0);
+  return Math.round(total * 1e6) / 1e6;
 }
 export function advanceFoodSpoilage(w: World, item: any, sheltered: Set<number>) {
   if (item.resource !== 'food' || foodType(item) !== 'raw') return;
   const fresh = freshPoints(item);
-  if (fresh <= 0) return;
+  if (fresh <= 1e-6) {
+    if (spoiledPoints(item) <= 1e-6)
+      w.items = w.items.filter((candidate) => candidate.id !== item.id);
+    else item.quantity = spoiledPoints(item);
+    return;
+  }
   const indoor = sheltered.has(tileKey(w, item));
   const weather = indoor ? 1 : w.weather === 'heavy-rain' ? 1.35 : w.weather === 'rain' ? 1.12 : 1;
   const rate =
@@ -132,8 +220,9 @@ export function advanceFoodSpoilage(w: World, item: any, sheltered: Set<number>)
   const converted = Math.min(fresh, fresh * rate * 100);
   item.freshPoints = fresh - converted;
   item.spoiledPoints = (item.spoiledPoints ?? 0) + converted;
-  item.quantity = Math.max(1, Math.round(item.freshPoints + item.spoiledPoints));
+  item.quantity = item.freshPoints + item.spoiledPoints;
   item.spoiled = item.spoiledPoints > 0;
+  if (item.quantity <= 1e-6) w.items = w.items.filter((candidate) => candidate.id !== item.id);
 }
 export function shelteredTiles(w: World) {
   const blocked = (p: Point) =>

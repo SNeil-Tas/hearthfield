@@ -25,7 +25,7 @@
 - Food has simple raw/meal spoilage timers and spoiled food is retained as visible, inedible waste.
 - Plants, Build and Cook skills affect deterministic work speed; hunger, rest, mood and illness modestly affect productivity.
 - Clear/rain/heavy-rain weather slows outdoor work; mild illness recovers naturally; beds auto-claim and prefer their owner.
-- Food-pressure schema 4: raw stacks track fresh/spoiled points, waste is physical and capped at 25, adjacent waste contaminates fresh food, and pantry/weather modifiers affect spoilage.
+- Food-pressure schema 5: raw stacks track fractional fresh/spoiled points, waste separates above an absolute 10-point threshold into 30-point expiry cohorts, Dump zones and bounded rot mood effects are supported, and pantry/weather modifiers affect spoilage.
 - Hungry colonists reserve cooking stations for personal 100-point-input/80-point-output meals, with multi-trip ingredient buffers and safe interruption refunds.
 - Mood thresholds visibly affect productivity and bounded metabolism; hunger drain is tuned by activity and hauling remains the highest-cost activity.
 

@@ -71,6 +71,7 @@ export function diagnosticItem(
     reservedBy: reservations.owner(item.id) ?? null,
     carriedBy: null,
     spoiled: item.spoiled ?? false,
+    expiryBatches: item.expiryBatches ?? null,
   };
 }
 
@@ -168,6 +169,7 @@ export function buildDebugReport(
           null,
       })),
     reservations: reservations.snapshot(),
+    dumpZones: world.dumpZones,
     recentEvents: log.snapshot(),
   };
 }

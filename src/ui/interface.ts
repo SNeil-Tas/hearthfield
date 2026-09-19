@@ -143,6 +143,7 @@ export class Interface {
       bed: 'Bed · Tap to place · 10 wood',
       cooking: 'Cooking station · Tap to place · 12 wood',
       stockpile: 'Stockpile · Drag an area',
+      dump: 'Dump zone · Drag an area',
       grow: 'Growing zone · Drag fertile ground',
     };
     const hintText =
