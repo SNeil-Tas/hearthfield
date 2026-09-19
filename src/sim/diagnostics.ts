@@ -116,9 +116,6 @@ export function buildDebugReport(
   metadata: Record<string, unknown>,
   speed: number,
 ) {
-  const carried = new Map<string, string>();
-  for (const pawn of world.pawns)
-    if (pawn.carrying) carried.set(`${pawn.carrying.resource}:${pawn.carrying.quantity}`, pawn.id);
   return {
     report: 'hearthfield-debug',
     reportVersion: 1,
@@ -164,9 +161,9 @@ export function buildDebugReport(
       .filter((item) => item.resource === 'food' || item.resource === 'waste')
       .map((item) => ({
         ...diagnosticItem(item, reservations),
-        carriedBy:
-          [...world.pawns].find((p) => p.carrying && p.carrying.resource === item.resource)?.id ??
-          null,
+        // Carried stacks are removed from world.items. Matching by resource or
+        // quantity falsely marked every world food item as carried by the same pawn.
+        carriedBy: null,
       })),
     reservations: reservations.snapshot(),
     dumpZones: world.dumpZones,

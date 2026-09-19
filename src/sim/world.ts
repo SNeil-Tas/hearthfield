@@ -202,13 +202,27 @@ export function resourceTotal(w: World, resource: Resource) {
   return Math.round(total * 1e6) / 1e6;
 }
 export function advanceFoodSpoilage(w: World, item: any, sheltered: Set<number>) {
-  if (item.resource !== 'food' || foodType(item) !== 'raw') return;
+  if (item.resource !== 'food' || foodType(item) !== 'raw') return undefined;
   const fresh = freshPoints(item);
   if (fresh <= 1e-6) {
     if (spoiledPoints(item) <= 1e-6)
       w.items = w.items.filter((candidate) => candidate.id !== item.id);
-    else item.quantity = spoiledPoints(item);
-    return;
+    else {
+      const spoiled = spoiledPoints(item);
+      const expiresAt =
+        item.spoilsAt !== undefined && item.spoilsAt > w.tick
+          ? item.spoilsAt
+          : w.tick + SPOILED_FOOD_LIFETIME;
+      w.items = w.items.filter((candidate) => candidate.id !== item.id);
+      addSpoiledFood(w, item, spoiled, expiresAt);
+      return {
+        itemId: item.id,
+        freshBefore: fresh,
+        spoiledBefore: spoiled,
+        spoiledFoodCreated: spoiled,
+      };
+    }
+    return undefined;
   }
   const indoor = sheltered.has(tileKey(w, item));
   const weather = indoor ? 1 : w.weather === 'heavy-rain' ? 1.35 : w.weather === 'rain' ? 1.12 : 1;
@@ -223,6 +237,7 @@ export function advanceFoodSpoilage(w: World, item: any, sheltered: Set<number>)
   item.quantity = item.freshPoints + item.spoiledPoints;
   item.spoiled = item.spoiledPoints > 0;
   if (item.quantity <= 1e-6) w.items = w.items.filter((candidate) => candidate.id !== item.id);
+  return undefined;
 }
 export function shelteredTiles(w: World) {
   const blocked = (p: Point) =>

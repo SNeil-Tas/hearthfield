@@ -67,7 +67,18 @@ export class Simulation {
       );
     }
     if (w.tick % 100 === 0) {
-      for (const item of w.items) advanceFoodSpoilage(w, item, this.sheltered);
+      for (const item of [...w.items]) {
+        const normalized = advanceFoodSpoilage(w, item, this.sheltered);
+        if (normalized)
+          this.diagnostics.record(w, 'RAW_FOOD_NORMALIZED_TO_WASTE', {
+            targetId: normalized.itemId,
+            values: {
+              freshBefore: normalized.freshBefore,
+              spoiledBefore: normalized.spoiledBefore,
+              spoiledFoodCreated: normalized.spoiledFoodCreated,
+            },
+          });
+      }
       advanceWasteDecay(w);
       for (const pawn of w.pawns) {
         if (pawn.illnessUntil !== undefined && pawn.illnessUntil <= w.tick) {

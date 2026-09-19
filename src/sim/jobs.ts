@@ -164,10 +164,15 @@ export function advanceJob(
       job.phase = 'target';
       return false;
     }
+    const recipeRemaining =
+      job.kind === 'cook' && building
+        ? Math.max(0, COOKING_INPUT - (building.ingredientFresh ?? 0))
+        : 12;
     const amount = Math.min(
       job.amount ?? 12,
       item.resource === 'food' && foodType(item) === 'raw' ? freshPoints(item) : item.quantity,
       bp ? BUILDINGS[bp.kind].cost - bp.delivered : 12,
+      recipeRemaining,
     );
     if (amount <= 0) {
       interruptJob(w, pawn, reservations, diagnostics, 'source amount unavailable');
@@ -355,7 +360,16 @@ export function advanceJob(
       if (!building || building.kind !== 'cooking') break;
       building.reservedBy = pawn.id;
       if (pawn.carrying) {
-        building.ingredientFresh = (building.ingredientFresh ?? 0) + pawn.carrying.quantity;
+        const bufferBefore = building.ingredientFresh ?? 0;
+        const delivered = Math.min(
+          pawn.carrying.quantity,
+          Math.max(0, COOKING_INPUT - bufferBefore),
+        );
+        if (delivered < pawn.carrying.quantity) {
+          dropFood(w, pawn, pawn.carrying.quantity - delivered, 'raw', 'staple');
+          pawn.carrying.quantity = delivered;
+        }
+        building.ingredientFresh = bufferBefore + delivered;
         pawn.carrying = null;
         diagnostics?.record(w, 'ITEM_DELIVERED_TO_BUFFER', {
           entityId: pawn.id,
@@ -363,46 +377,110 @@ export function advanceJob(
           targetId: building.id,
           jobType: job.kind,
           position: point(building),
-          values: { fresh: building.ingredientFresh },
+          values: {
+            transactionId: job.cookTransactionId ?? `${pawn.id}:${building.id}`,
+            bufferBefore,
+            delivered,
+            bufferAfter: building.ingredientFresh,
+            recipeRequirement: COOKING_INPUT,
+            currentSourceId: job.sourceId ?? null,
+          },
         });
-        if ((building.ingredientFresh ?? 0) < COOKING_INPUT) {
-          const next = w.items.find(
-            (i) =>
-              i.resource === 'food' &&
-              foodType(i) === 'raw' &&
-              freshPoints(i) >= 1 &&
-              !requiresFoodSeparation(i) &&
-              reservations.available([i.id], pawn.id),
-          );
-          if (!next) {
-            // Preserve the v0.3 dedicated-cook path for non-hungry colonies;
-            // personal self-care still requires the full 100-point recipe.
-            if (pawn.hunger > 35 && (building.ingredientFresh ?? 0) >= 4)
-              building.cookingProgress = 7.5;
-            else {
-              cancel();
-              break;
-            }
-          }
-          if (next) {
-            const previousSourceId = job.sourceId;
-            if (next.id !== previousSourceId && !reservations.claim([next.id], pawn.id)) {
-              cancel();
-              break;
-            }
-            if (next.id !== previousSourceId) {
-              if (previousSourceId) reservations.releaseKey(previousSourceId, pawn.id);
-              job.keys = job.keys.filter((key) => key !== previousSourceId);
-              job.keys.push(next.id);
-            }
-            job.sourceId = next.id;
-            job.phase = 'source';
-            job.path = findPath(w, building, next, true, grid) ?? [];
-            break;
-          }
-        }
+        if (building.ingredientFresh >= COOKING_INPUT)
+          diagnostics?.record(w, 'COOK_RECIPE_READY', {
+            entityId: pawn.id,
+            entityName: pawn.name,
+            targetId: building.id,
+            jobType: 'cook',
+            position: point(building),
+            values: {
+              transactionId: job.cookTransactionId ?? `${pawn.id}:${building.id}`,
+              bufferFresh: building.ingredientFresh,
+              recipeRequirement: COOKING_INPUT,
+              nextAction: 'begin cooking',
+            },
+          });
       }
       const required = pawn.hunger > 35 ? 4 : COOKING_INPUT;
+      if ((building.ingredientFresh ?? 0) < required) {
+        const previousSourceId = job.sourceId;
+        const next = w.items.find(
+          (i) =>
+            i.resource === 'food' &&
+            foodType(i) === 'raw' &&
+            freshPoints(i) >= 1 &&
+            !requiresFoodSeparation(i) &&
+            reservations.available([i.id], pawn.id),
+        );
+        if (next && reservations.claim([next.id], pawn.id)) {
+          if (next.id !== previousSourceId) {
+            if (previousSourceId) reservations.releaseKey(previousSourceId, pawn.id);
+            job.keys = job.keys.filter((key) => key !== previousSourceId);
+            job.keys.push(next.id);
+          }
+          job.sourceId = next.id;
+          job.phase = 'source';
+          job.waitingForSource = false;
+          job.path = findPath(w, building, next, true, grid) ?? [];
+          diagnostics?.record(w, 'COOK_SOURCE_SWITCHED', {
+            entityId: pawn.id,
+            entityName: pawn.name,
+            targetId: building.id,
+            jobType: 'cook',
+            position: point(building),
+            values: {
+              transactionId: job.cookTransactionId ?? `${pawn.id}:${building.id}`,
+              previousSourceId: previousSourceId ?? null,
+              nextSourceId: next.id,
+              sourceAction: next.id === previousSourceId ? 'same source' : 'new source',
+              sourceFreshRemaining: freshPoints(next),
+              bufferFresh: building.ingredientFresh ?? 0,
+            },
+          });
+          break;
+        }
+        if (!next) {
+          if (previousSourceId) {
+            reservations.releaseKey(previousSourceId, pawn.id);
+            job.keys = job.keys.filter((key) => key !== previousSourceId);
+          }
+          job.sourceId = undefined;
+          if (!job.waitingForSource) {
+            diagnostics?.record(w, 'COOK_SOURCE_EXHAUSTED', {
+              entityId: pawn.id,
+              entityName: pawn.name,
+              targetId: building.id,
+              jobType: 'cook',
+              position: point(building),
+              values: {
+                transactionId: job.cookTransactionId ?? `${pawn.id}:${building.id}`,
+                sourceId: previousSourceId ?? null,
+                bufferFresh: building.ingredientFresh ?? 0,
+                recipeRequirement: required,
+                nextAction: 'acquire new source',
+              },
+            });
+          }
+          job.waitingForSource = true;
+        }
+        break;
+      }
+      if (job.waitingForSource) {
+        job.waitingForSource = false;
+        diagnostics?.record(w, 'COOK_RECIPE_READY', {
+          entityId: pawn.id,
+          entityName: pawn.name,
+          targetId: building.id,
+          jobType: 'cook',
+          position: point(building),
+          values: {
+            transactionId: job.cookTransactionId ?? `${pawn.id}:${building.id}`,
+            bufferFresh: building.ingredientFresh ?? 0,
+            recipeRequirement: required,
+            nextAction: 'begin cooking',
+          },
+        });
+      }
       if ((building.ingredientFresh ?? 0) >= required) {
         building.cookingProgress =
           (building.cookingProgress ?? 0) +

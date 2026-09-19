@@ -3,6 +3,7 @@ import { findPath } from './pathfinding';
 import { needCandidates, rankCandidate, type Candidate } from './job-board';
 import { Reservations } from './reservations';
 import { DiagnosticLog, point } from './diagnostics';
+import { foodType, freshPoints, requiresFoodSeparation } from './world';
 
 export function assignJob(
   w: World,
@@ -19,14 +20,12 @@ export function assignJob(
       ({ candidate, rank }) =>
         Number.isFinite(rank) &&
         (!candidate.sourceId ||
-          w.items.some(
-            (item) =>
-              item.id === candidate.sourceId &&
-              item.quantity > 1e-6 &&
-              (candidate.kind !== 'cook' ||
-                item.freshPoints === undefined ||
-                item.freshPoints >= 1),
-          )) &&
+          w.items.some((item) => {
+            if (item.id !== candidate.sourceId || item.quantity <= 1e-6) return false;
+            if (item.resource !== 'food' || foodType(item) !== 'raw') return true;
+            if (candidate.kind === 'separate') return requiresFoodSeparation(item);
+            return freshPoints(item) > 1e-6 && !requiresFoodSeparation(item);
+          })) &&
         reservations.available(candidate.keys, pawn.id) &&
         (retries.get(`${pawn.id}:${candidate.keys.join(',')}`) ?? 0) <= w.tick,
     )
@@ -91,6 +90,7 @@ export function assignJob(
       progress: 0,
       keys: c.keys,
       amount: c.amount,
+      cookTransactionId: c.kind === 'cook' ? `${pawn.id}:${c.targetId}:${w.tick}` : undefined,
     };
     diagnostics?.record(w, 'JOB_ASSIGNED', {
       entityId: pawn.id,

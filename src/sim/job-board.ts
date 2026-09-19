@@ -155,6 +155,9 @@ export function workCandidates(w: World): Candidate[] {
     if (
       item.quantity > 1e-6 &&
       !stored.has(tileKey(w, item)) &&
+      (item.resource !== 'food' ||
+        foodType(item) !== 'raw' ||
+        (freshPoints(item) > 1e-6 && !requiresFoodSeparation(item))) &&
       !(item.resource === 'waste' && isDumpTile(w, item))
     ) {
       // Several destination choices allow haulers to work concurrently.

@@ -78,6 +78,8 @@ export interface Job {
   progress: number;
   keys: string[];
   amount?: number;
+  cookTransactionId?: string;
+  waitingForSource?: boolean;
 }
 export interface Pawn extends Point {
   id: string;
