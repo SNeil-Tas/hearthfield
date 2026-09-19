@@ -1,6 +1,14 @@
 import { BUILDINGS } from './definitions';
 import type { Job, Pawn, Point, WorkType, World } from './types';
-import { distance, tileKey, sameTile, foodType, isFoodSpoiled } from './world';
+import {
+  distance,
+  tileKey,
+  sameTile,
+  foodType,
+  freshPoints,
+  spoiledPoints,
+  isFoodSpoiled,
+} from './world';
 
 export interface Candidate {
   kind: Job['kind'];
@@ -98,8 +106,9 @@ export function workCandidates(w: World): Candidate[] {
       if (
         item.resource === 'food' &&
         foodType(item) === 'raw' &&
-        !isFoodSpoiled(w, item) &&
-        item.quantity >= 4
+        freshPoints(item) >= 1 &&
+        spoiledPoints(item) / Math.max(1, item.quantity) <= 0.1 &&
+        !station.reservedBy
       ) {
         candidates.push({
           kind: 'cook',
@@ -111,7 +120,7 @@ export function workCandidates(w: World): Candidate[] {
           keys: [item.id, station.id],
           work: 'cook',
           score: 4,
-          amount: 4,
+          amount: 12,
         });
         break;
       }
@@ -149,14 +158,21 @@ export function needCandidates(w: World, pawn: Pawn): Candidate[] {
   const candidates: Candidate[] = [];
   if (pawn.hunger < 38)
     for (const item of w.items)
-      if (item.resource === 'food' && !isFoodSpoiled(w, item))
+      if (
+        item.resource === 'food' &&
+        (foodType(item) === 'meal' || item.foodKind === 'berries' || pawn.hunger <= 18) &&
+        !isFoodSpoiled(w, item)
+      )
         candidates.push({
           kind: 'eat',
           sourceId: item.id,
           destination: item,
           adjacent: true,
           keys: [item.id],
-          score: -1000 + distance(pawn, item) + (foodType(item) === 'meal' ? -40 : 0),
+          score:
+            -1000 +
+            distance(pawn, item) +
+            (foodType(item) === 'meal' ? -40 : item.foodKind === 'berries' ? -10 : 20),
         });
   // Food in the wild remains an autonomous fallback when stores are exhausted.
   if (pawn.hunger < 30 && !w.items.some((i) => i.resource === 'food'))
@@ -189,6 +205,40 @@ export function needCandidates(w: World, pawn: Pawn): Candidate[] {
       keys: [`sleep:${tileKey(w, pawn)}`],
       score: -500,
     });
+  }
+  if (pawn.hunger < 35) {
+    for (const station of w.buildings) {
+      if (station.kind !== 'cooking' || station.reservedBy) continue;
+      const raw = w.items.find(
+        (i) => i.resource === 'food' && foodType(i) === 'raw' && freshPoints(i) > 0,
+      );
+      if (raw)
+        candidates.push({
+          kind: 'cook',
+          sourceId: raw.id,
+          targetId: station.id,
+          source: raw,
+          destination: station,
+          adjacent: true,
+          keys: [station.id, raw.id],
+          score: -1100,
+          amount: 12,
+        });
+    }
+    for (const item of w.items)
+      if (
+        item.resource === 'food' &&
+        foodType(item) === 'raw' &&
+        spoiledPoints(item) / Math.max(1, item.quantity) > 0.1
+      )
+        candidates.push({
+          kind: 'separate',
+          sourceId: item.id,
+          destination: item,
+          adjacent: true,
+          keys: [item.id],
+          score: -1050,
+        });
   }
   return candidates;
 }

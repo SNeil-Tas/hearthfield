@@ -12,6 +12,7 @@ export const RESOURCES: Record<Resource, { label: string; color: string }> = {
   wood: { label: 'Wood', color: '#c99963' },
   stone: { label: 'Stone', color: '#b9c2be' },
   food: { label: 'Food', color: '#e2af69' },
+  waste: { label: 'Spoiled food', color: '#8f6b58' },
 };
 export const BUILDINGS: Record<
   BuildingKind,
@@ -72,7 +73,11 @@ export const JOB_LABELS = {
   sow: 'Sowing crops',
   harvest: 'Harvesting crops',
   cook: 'Cooking meals',
+  separate: 'Separating spoiled food',
   deconstruct: 'Taking apart',
 };
 export const CROP_GROWTH_TICKS = 2400;
-export const COOKING_INPUT = 4;
+export const FOOD_STACK_CAP = 100;
+export const SPOILED_STACK_CAP = 25;
+export const COOKING_INPUT = 100;
+export const COOKED_MEAL_POINTS = 80;

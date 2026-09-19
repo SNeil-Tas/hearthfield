@@ -1,6 +1,6 @@
 # Implementation status
 
-**Milestone:** v0.3 friction and individuality in progress, built on the v0.2 survival loop. Original GDD preserved unchanged.
+**Milestone:** v0.4 food pressure and throughput implemented on the v0.3 friction foundation. Original GDD preserved unchanged.
 
 **Patch:** v0.2.1 PWA update delivery fix remains the release foundation; v0.3 gameplay scope is now implemented.
 
@@ -25,6 +25,9 @@
 - Food has simple raw/meal spoilage timers and spoiled food is retained as visible, inedible waste.
 - Plants, Build and Cook skills affect deterministic work speed; hunger, rest, mood and illness modestly affect productivity.
 - Clear/rain/heavy-rain weather slows outdoor work; mild illness recovers naturally; beds auto-claim and prefer their owner.
+- Food-pressure schema 4: raw stacks track fresh/spoiled points, waste is physical and capped at 25, adjacent waste contaminates fresh food, and pantry/weather modifiers affect spoilage.
+- Hungry colonists reserve cooking stations for personal 100-point-input/80-point-output meals, with multi-trip ingredient buffers and safe interruption refunds.
+- Mood thresholds visibly affect productivity and bounded metabolism; hunger drain is tuned by activity and hauling remains the highest-cost activity.
 
 ## Verification
 

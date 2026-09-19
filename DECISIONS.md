@@ -30,3 +30,10 @@
 26. **Spatial storage and spoilage.** Stockpile cells remain ordinary map cells with a 48-unit aggregate capacity. Raw food lasts three simulated days; cooked meals last 1.5 days. Spoiled stacks remain visible but are not edible or cooking ingredients.
 27. **Weather, illness and beds.** Clear/rain/heavy rain rotate on simulation time and rain affects outdoor plant work. Mild illness lasts 90 simulated seconds and recovers naturally. The first user of an unclaimed bed claims it; own beds recover rest faster, while borrowing applies small mood penalties to sleeper and owner.
 28. **Save migration v3.** New saves use envelope v3. v1/v2 loads default weather to clear, initialize conservative food expiry, add neutral mood/productivity fields, and leave beds unclaimed/colonists healthy. Jobs remain ephemeral.
+# v0.4 food pressure decisions
+
+- Raw food uses a single physical stack with fresh and spoiled point quantities; total quantity remains visible until separation.
+- Personal cooking is demand-driven: 100 fresh raw points become one 80-point meal, and station ingredients are buffered across trips.
+- Spoilage is bounded and legible: indoor storage is slower, exposed rain is faster, and adjacent waste applies one 2x multiplier rather than stacking multiplicatively.
+- Spoiled food is physical `waste`, capped at 25 points per stack, and composting is deferred.
+- Save schema 4 migrates existing food conservatively by treating legacy raw quantity as fresh points and preserving spoiled flags where present.

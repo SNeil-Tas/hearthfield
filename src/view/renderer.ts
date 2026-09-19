@@ -159,6 +159,11 @@ export class Renderer {
           this.ellipse(p.x, p.y, z * 0.23, z * 0.21);
           c.fillStyle = '#a36c4c';
           c.fillRect(p.x - 3, p.y - z * 0.22, 6, 3);
+        } else if (item.resource === 'waste') {
+          c.fillStyle = '#76534d';
+          this.ellipse(p.x, p.y, z * 0.25, z * 0.2);
+          c.fillStyle = '#b38a62';
+          c.fillRect(p.x - z * 0.12, p.y - z * 0.08, z * 0.24, z * 0.16);
         } else {
           c.fillStyle = '#b6b8a9';
           this.ellipse(p.x, p.y, z * 0.25, z * 0.17);

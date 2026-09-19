@@ -96,3 +96,7 @@ The deployed v0.2.1 smoke test reported `Hearthfield v0.2.1 · Build 7f8788a3850
 ## v0.2 release deployment addendum
 
 Pages run [35311555660](https://github.com/SNeil-Tas/hearthfield/actions/runs/35311555660) deployed the v0.2 build successfully. A live Playwright smoke test returned HTTP 200, rendered three colonists, loaded the manifest and service worker with HTTP 200, detected relative hashed assets, and reported no page errors or failed requests.
+
+## v0.4 food-pressure verification
+
+The simulation suite remains green after schema 4 migration, explicit fresh/spoiled food points, physical waste stacks, hunger-driven cooking buffers, mood metabolism, and indoor/weather spoilage modifiers. TypeScript and formatting checks also pass. Production build, browser tests, long-run balance scenarios, and a new Pages deployment remain release-gate work before tagging `v0.4-food-pressure`.

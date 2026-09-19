@@ -88,3 +88,9 @@ See [ARCHITECTURE.md](ARCHITECTURE.md), [DECISIONS.md](DECISIONS.md), [IMPLEMENT
 In development, `window.colonyDebug` exposes the simulation, camera, clock, UI state, `step(count)`, and `save()`. Pause first when stepping manually. **More → Diagnostics** shows job paths, tick, reservation count, entity IDs, positions and selected-target ownership. This debug console API is omitted from production.
 
 The prototype intentionally has no combat, raids, medicine, roof/temperature simulation, death, audio, or cloud saves yet. Farming, cooking, shelter, physical logistics, navigation, activity metabolism and construction are live systems rather than scripted animations.
+
+### v0.4 food pressure
+
+Food is measured in points. Raw stacks cap at 100 total points and track fresh/spoiled points separately; spoiled points become physical waste stacks capped at 25. Waste blocks movement and doubles spoilage for fresh food in an 8-neighbour ring. Indoor storage slows spoilage, while rain worsens exposed food. Meals use 100 fresh raw points and provide 80 hunger points.
+
+Hungry colonists reserve a cooking station for personal self-care, collect ingredients over multiple trips when necessary, and eat the resulting meal immediately. Cooking skill affects preparation speed, while Cook priority is not required for survival cooking. Save schema 4 migrates older food stacks to fresh-point defaults without deleting reserves. Composting is intentionally deferred.

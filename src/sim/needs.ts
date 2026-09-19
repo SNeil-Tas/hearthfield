@@ -1,12 +1,12 @@
 import type { Pawn, World, ActivityKind } from './types';
 const costs: Record<ActivityKind, [number, number]> = {
-  sleeping: [0.16, 0],
-  resting: [0.22, 0.05],
-  walking: [0.28, 0.12],
-  'light-work': [0.34, 0.18],
-  working: [0.42, 0.25],
-  'heavy-work': [0.52, 0.34],
-  hauling: [0.6, 0.4],
+  sleeping: [0.22, 0],
+  resting: [0.32, 0.05],
+  walking: [0.42, 0.12],
+  'light-work': [0.55, 0.18],
+  working: [0.68, 0.25],
+  'heavy-work': [0.82, 0.34],
+  hauling: [0.95, 0.4],
 };
 export function updateNeeds(w: World, pawn: Pawn) {
   const kind = pawn.job?.kind;
@@ -24,14 +24,15 @@ export function updateNeeds(w: World, pawn: Pawn) {
   const [hungerCost, restCost] = costs[activity];
   const ill = pawn.illnessUntil !== undefined && pawn.illnessUntil > w.tick;
   pawn.activity = activity;
+  const moodMetabolism = pawn.mood < 30 ? 1.22 : pawn.mood < 60 ? 1.1 : 1;
   pawn.productivity = Math.max(
     0.55,
-    (pawn.hunger < 35 ? 0.9 : 1) *
+    (pawn.mood < 30 ? 0.8 : pawn.mood < 60 ? 0.9 : 1) *
       (pawn.rest < 30 ? 0.78 : pawn.rest < 55 ? 0.92 : 1) *
       (ill ? 0.78 : 1) *
-      (pawn.mood < 35 ? 0.92 : 1),
+      (pawn.hunger < 35 ? 0.9 : 1),
   );
-  pawn.hunger = Math.max(0, pawn.hunger - hungerCost * 0.1);
+  pawn.hunger = Math.max(0, pawn.hunger - hungerCost * 0.1 * moodMetabolism);
   if (activity !== 'sleeping') pawn.rest = Math.max(0, pawn.rest - restCost * 0.1);
   if (pawn.hunger <= 0) pawn.health = Math.max(1, pawn.health - 0.25);
   else if (pawn.hunger > 55 && pawn.rest > 50) pawn.health = Math.min(100, pawn.health + 0.08);
@@ -51,6 +52,7 @@ export function updateNeeds(w: World, pawn: Pawn) {
 }
 export function shouldInterrupt(pawn: Pawn) {
   if (!pawn.job) return false;
-  if (pawn.hunger < 18 && !['eat', 'gather'].includes(pawn.job.kind)) return true;
+  if (pawn.hunger < 20 && !['eat', 'gather', 'cook', 'separate'].includes(pawn.job.kind))
+    return true;
   return pawn.rest < 12 && !['sleep', 'eat', 'gather'].includes(pawn.job.kind) && pawn.hunger > 18;
 }

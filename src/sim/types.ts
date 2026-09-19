@@ -3,7 +3,7 @@ export interface Point {
   y: number;
 }
 export type Terrain = 'soil' | 'fertile' | 'rock' | 'water';
-export type Resource = 'wood' | 'stone' | 'food';
+export type Resource = 'wood' | 'stone' | 'food' | 'waste';
 export type FoodType = 'raw' | 'meal';
 export type WeatherKind = 'clear' | 'rain' | 'heavy-rain';
 export type ActivityKind =
@@ -23,11 +23,15 @@ export type JobKind =
   | 'sow'
   | 'harvest'
   | 'cook'
+  | 'separate'
   | 'deconstruct';
 export interface Stack {
   resource: Resource;
   quantity: number;
   foodType?: FoodType;
+  foodKind?: 'berries' | 'staple';
+  freshPoints?: number;
+  spoiledPoints?: number;
 }
 export interface Item extends Point, Stack {
   id: string;
@@ -50,6 +54,9 @@ export interface Building extends Point {
   kind: BuildingKind;
   deconstructing?: boolean;
   ownerId?: string;
+  ingredientFresh?: number;
+  cookingProgress?: number;
+  reservedBy?: string;
 }
 export interface Blueprint extends Building {
   delivered: number;

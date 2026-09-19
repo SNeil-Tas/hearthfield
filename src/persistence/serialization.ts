@@ -5,7 +5,7 @@ import { interruptJob } from '../sim/jobs';
 import type { World } from '../sim/types';
 
 export interface SaveEnvelope {
-  version: 1 | 2 | 3;
+  version: 1 | 2 | 3 | 4;
   savedAt: number;
   checksum: string;
   payload: string;
@@ -17,9 +17,9 @@ export function checksum(text: string) {
 }
 export function encode(w: World): SaveEnvelope {
   const payload = JSON.stringify(w);
-  return { version: 3, savedAt: Date.now(), checksum: checksum(payload), payload };
+  return { version: 4, savedAt: Date.now(), checksum: checksum(payload), payload };
 }
-function migrate(world: any, version: 1 | 2 | 3) {
+function migrate(world: any, version: 1 | 2 | 3 | 4) {
   if (version === 1) {
     world.crops ??= [];
     world.growingZones ??= [];
@@ -30,6 +30,20 @@ function migrate(world: any, version: 1 | 2 | 3) {
       pawn.priorities.cook ??= 2;
     }
     for (const item of world.items ?? []) if (item.resource === 'food') item.foodType ??= 'raw';
+  }
+  for (const item of world.items ?? []) {
+    if (item.resource === 'food') {
+      item.foodType ??= 'raw';
+      if (item.foodType === 'raw') {
+        item.spoiledPoints ??= item.spoiled ? item.quantity : 0;
+        item.freshPoints ??= Math.max(0, item.quantity - item.spoiledPoints);
+        item.foodKind ??= 'staple';
+      }
+    }
+  }
+  for (const building of world.buildings ?? []) {
+    building.ingredientFresh ??= 0;
+    building.cookingProgress ??= 0;
   }
   if (version <= 2) {
     world.weather ??= 'clear';
@@ -124,10 +138,18 @@ export function validateWorld(value: unknown): asserts value is World {
   for (const b of w.blueprints)
     if (!integer(b.delivered, 0, BUILDINGS[b.kind].cost) || !finite(b.work, 0, 1000000))
       throw new Error('Invalid blueprint.');
-  const validStack = (i: { resource: string; quantity: number; foodType?: string }) =>
-    ['wood', 'stone', 'food'].includes(i.resource) &&
+  const validStack = (i: {
+    resource: string;
+    quantity: number;
+    foodType?: string;
+    freshPoints?: number;
+    spoiledPoints?: number;
+  }) =>
+    ['wood', 'stone', 'food', 'waste'].includes(i.resource) &&
     integer(i.quantity, 1, 100000) &&
-    (i.resource !== 'food' || !i.foodType || ['raw', 'meal'].includes(i.foodType));
+    (i.resource !== 'food' || !i.foodType || ['raw', 'meal'].includes(i.foodType)) &&
+    (i.freshPoints === undefined || finite(i.freshPoints, 0, 100000)) &&
+    (i.spoiledPoints === undefined || finite(i.spoiledPoints, 0, 100000));
   if (
     w.items.some((i) => !validStack(i)) ||
     w.stockpiles.some((k) => !integer(k, 0, w.width * w.height - 1))
@@ -168,7 +190,7 @@ export function validateWorld(value: unknown): asserts value is World {
 export function decode(raw: unknown): { world: World; savedAt: number } {
   if (!raw || typeof raw !== 'object') throw new Error('Unrecognised save.');
   const e = raw as SaveEnvelope;
-  if (e.version !== 1 && e.version !== 2 && e.version !== 3)
+  if (e.version !== 1 && e.version !== 2 && e.version !== 3 && e.version !== 4)
     throw new Error('This save needs a different game version.');
   if (
     typeof e.payload !== 'string' ||

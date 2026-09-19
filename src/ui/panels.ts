@@ -2,7 +2,16 @@ import { BUILDINGS, DAY_TICKS, JOB_LABELS, NODES, TERRAIN, WORK } from '../sim/d
 import type { World } from '../sim/types';
 import type { Panel, UIState } from './state';
 import { escapeHTML as esc, icon } from './icons';
-import { foodType, resourceTotal, shelteredTiles, tileKey, isFoodSpoiled } from '../sim/world';
+import {
+  foodType,
+  freshPoints,
+  spoiledPoints,
+  hasAdjacentWaste,
+  resourceTotal,
+  shelteredTiles,
+  tileKey,
+  isFoodSpoiled,
+} from '../sim/world';
 import { APP_VERSION, BUILD_ID } from '../build';
 
 const toolButton = (tool: string, label: string, detail: string, symbol = tool) =>
@@ -86,7 +95,8 @@ export function contextHTML(w: World, ui: UIState, owner?: string) {
   if (p) {
     const meter = (label: string, value: number) =>
       `<div class="need"><span>${label}</span><meter min="0" max="100" low="25" high="60" optimum="100" value="${value}"></meter><b>${Math.round(value)}</b></div>`;
-    content = `<span class="eyebrow">COLONIST · ${p.mood > 65 ? 'CONTENT' : p.mood > 35 ? 'UNEASY' : 'STRUGGLING'}</span><h3>${esc(p.name)}</h3><p class="job-status">${p.job ? JOB_LABELS[p.job.kind] : 'Taking a breather'}${p.carrying ? ` · ${p.carrying.quantity} ${p.carrying.resource}` : ''}</p><div class="needs">${meter('Food', p.hunger)}${meter('Rest', p.rest)}${meter('Health', p.health)}</div><p>${p.activity ?? 'resting'} · productivity ${Math.round((p.productivity ?? 1) * 100)}%${p.illnessUntil && p.illnessUntil > w.tick ? ' · mildly ill' : ''}${p.moodBias ? ` · mood ${p.moodBias > 0 ? '+' : ''}${p.moodBias}` : ''}</p><button class="text-button" data-action="panel" data-value="work">Manage work priorities <span>↗</span></button>`;
+    const moodLabel = p.mood >= 60 ? 'Normal' : p.mood >= 30 ? 'Strained' : 'Miserable';
+    content = `<span class="eyebrow">COLONIST · ${esc(moodLabel.toUpperCase())}</span><h3>${esc(p.name)}</h3><p class="job-status">${p.job ? JOB_LABELS[p.job.kind] : 'Taking a breather'}${p.carrying ? ` · ${p.carrying.quantity} ${p.carrying.resource}` : ''}</p><div class="needs">${meter('Food', p.hunger)}${meter('Rest', p.rest)}${meter('Health', p.health)}</div><p>Hunger drain ${(p.activity === 'hauling' ? 3.8 : p.activity === 'heavy-work' ? 3.3 : 2.7).toFixed(1)} / hour · ${p.activity ?? 'resting'}<br>Mood: ${moodLabel} · work speed ${Math.round((p.productivity ?? 1) * 100)}%${p.illnessUntil && p.illnessUntil > w.tick ? ' · mildly ill' : ''}</p><button class="text-button" data-action="panel" data-value="work">Manage work priorities <span>↗</span></button>`;
   } else if (node) {
     const def = NODES[node.kind];
     content = `<span class="eyebrow">${node.designated ? 'MARKED FOR GATHERING' : 'NATURAL RESOURCE'}</span><h3>${def.label}</h3><p>${def.yield} ${def.resource} when gathered.</p><button class="primary" data-action="node" data-value="${node.designated ? 'cancel' : 'gather'}">${icon(node.designated ? 'close' : 'orders')}${node.designated ? 'Cancel order' : node.kind === 'tree' ? 'Chop tree' : 'Gather'}</button>`;
@@ -111,7 +121,11 @@ export function contextHTML(w: World, ui: UIState, owner?: string) {
       const raw = w.items
         .filter((item) => item.resource === 'food' && foodType(item) === 'raw')
         .reduce((total, item) => total + item.quantity, 0);
-      content += `<p>${raw < 4 ? 'Waiting for ingredients' : w.pawns.some((pawn) => pawn.priorities.cook > 0) ? 'Ready to cook simple meals' : 'No colonist has Cook enabled'}</p>`;
+      const buffer = b.ingredientFresh ?? 0;
+      const cookOwner = b.reservedBy
+        ? w.pawns.find((pawn) => pawn.id === b.reservedBy)?.name
+        : undefined;
+      content += `<p>${cookOwner ? `Reserved by ${esc(cookOwner)} · ingredients ${buffer} / 100` : raw < 1 ? 'Blocked: no usable food' : 'Idle · available for hungry colonists'}${b.cookingProgress ? `<br>Cooking meal · ${Math.min(100, Math.round((b.cookingProgress / 8) * 100))}%` : ''}</p>`;
     }
     content += b.deconstructing
       ? '<p>Deconstruction is underway.</p>'
@@ -119,13 +133,11 @@ export function contextHTML(w: World, ui: UIState, owner?: string) {
   } else if (item) {
     const freshness =
       item.resource === 'food'
-        ? isFoodSpoiled(w, item)
-          ? 'Spoiled'
-          : item.spoilsAt
-            ? `Spoils in ${Math.max(0, (item.spoilsAt - w.tick) / 6000).toFixed(1)} days`
-            : 'Fresh'
+        ? foodType(item) === 'raw'
+          ? `Fresh: ${Math.round(freshPoints(item))}<br>Spoiled: ${Math.round(spoiledPoints(item))}<br>Total: ${item.quantity}${hasAdjacentWaste(w, item) ? '<br>Spoilage: 2× · adjacent waste' : ''}`
+          : 'Cooked meal · 80 food points'
         : '';
-    content = `<span class="eyebrow">PHYSICAL SUPPLIES</span><h3>${item.quantity} ${item.foodType === 'meal' ? 'meal' : item.resource}</h3><p>${freshness}${freshness ? '<br>' : ''}${w.stockpiles.includes(tileKey(w, item)) ? 'In a stockpile' : 'On the ground · Awaiting hauling'}</p>`;
+    content = `<span class="eyebrow">PHYSICAL SUPPLIES</span><h3>${item.quantity} ${item.resource === 'waste' ? 'spoiled food waste' : item.foodType === 'meal' ? 'meal' : item.resource}</h3><p>${freshness}${freshness ? '<br>' : ''}${w.stockpiles.includes(tileKey(w, item)) ? 'In a stockpile' : 'On the ground · Awaiting hauling'}</p>`;
   } else if (crop) {
     content = `<span class="eyebrow">GRAIN CROP</span><h3>${crop.growth >= 1 ? 'Ready to harvest' : crop.growth < 0.1 ? 'Freshly sown' : 'Growing'}</h3><p>${Math.round(crop.growth * 100)}% grown · Plants work will tend it.</p>`;
   } else if (ui.selectedTile) {
