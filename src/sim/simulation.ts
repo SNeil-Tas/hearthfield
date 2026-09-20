@@ -17,6 +17,7 @@ import {
 } from './world';
 import { emit } from './events';
 import { DiagnosticLog, point } from './diagnostics';
+import { reachableMeal } from './selfcare';
 
 export class Simulation {
   readonly diagnostics = new DiagnosticLog();
@@ -135,7 +136,37 @@ export class Simulation {
             reason: 'critical rest',
             values: { before: restBefore, after: pawn.rest, threshold: 28 },
           });
-        if (shouldInterrupt(pawn))
+        const readyMeal =
+          pawn.hunger < 20 && pawn.job && pawn.job.kind !== 'eat'
+            ? reachableMeal(w, pawn, this.reservations, this.grid)
+            : undefined;
+        if (readyMeal) {
+          const previousJob = pawn.job!.kind;
+          interruptJob(
+            w,
+            pawn,
+            this.reservations,
+            this.diagnostics,
+            'critical hunger: prepared meal',
+          );
+          this.reservations.claim([readyMeal.item.id], pawn.id);
+          pawn.job = {
+            kind: 'eat',
+            sourceId: readyMeal.item.id,
+            destination: readyMeal.item,
+            path: readyMeal.path!,
+            phase: 'target',
+            progress: 0,
+            keys: [readyMeal.item.id],
+            personalFoodPlan: true,
+          };
+          this.diagnostics.record(w, 'SELFCARE_PREEMPTED_JOB', {
+            entityId: pawn.id,
+            targetId: readyMeal.item.id,
+            jobType: previousJob,
+            values: { hunger: pawn.hunger, selectedPlan: 'eat' },
+          });
+        } else if (shouldInterrupt(pawn))
           interruptJob(w, pawn, this.reservations, this.diagnostics, 'need threshold');
       }
       if (!pawn.job && (w.tick + i * 3) % 10 === 0)

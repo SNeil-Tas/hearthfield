@@ -32,8 +32,7 @@ export function walkable(w: World, p: Point) {
     inside(w, p) &&
     TERRAIN[w.terrain[tileKey(w, p)]!].passable &&
     !w.buildings.some((b) => BUILDINGS[b.kind].blocks && sameTile(b, p)) &&
-    !w.nodes.some((n) => n.kind !== 'berries' && sameTile(n, p)) &&
-    !w.items.some((i) => sameTile(i, p))
+    !w.nodes.some((n) => n.kind !== 'berries' && sameTile(n, p))
   );
 }
 export const FOOD_LIFETIME: Record<FoodType, number> = { raw: 2 * 6000, meal: 1.25 * 6000 };

@@ -140,7 +140,7 @@ export function advanceJob(
     }
     return false;
   }
-  if (job.progress === 0)
+  if (job.progress === 0 && !job.separationProgress)
     diagnostics?.record(w, 'JOB_STARTED', {
       entityId: pawn.id,
       entityName: pawn.name,
@@ -156,14 +156,35 @@ export function advanceJob(
       return false;
     }
     if (job.kind === 'separate') {
-      const dumpKey = w.dumpZones[0];
-      job.destination =
-        dumpKey === undefined
-          ? { x: Math.round(item.x), y: Math.round(item.y) }
-          : { x: dumpKey % w.width, y: Math.floor(dumpKey / w.width) };
-      job.path = findPath(w, pawn, job.destination, true, grid) ?? [];
+      // Separate at the source; dump hauling moves the resulting physical waste.
+      job.destination = { x: item.x, y: item.y };
       job.phase = 'target';
       return false;
+    }
+    if (job.kind === 'cook' && requiresFoodSeparation(item)) {
+      if (!job.separationProgress)
+        diagnostics?.record(w, 'FOOD_SEPARATION_REQUIRED', {
+          entityId: pawn.id,
+          targetId: item.id,
+          jobType: 'cook',
+          reason: 'required ingredient substep',
+        });
+      job.separationProgress = (job.separationProgress ?? 0) + TICK_SECONDS;
+      if (job.separationProgress < 3) return false;
+      const spoiled = spoiledPoints(item);
+      addSpoiledFood(w, item, spoiled, w.tick + SPOILED_FOOD_LIFETIME);
+      item.spoiledPoints = 0;
+      item.quantity = freshPoints(item);
+      item.spoiled = false;
+      pawn.rotHandledUntil = w.tick + 600;
+      pawn.rotHandledPenalty = Math.min(4, Math.max(2, pawn.rotHandledPenalty ?? 0));
+      diagnostics?.record(w, 'FOOD_SEPARATED', {
+        entityId: pawn.id,
+        targetId: item.id,
+        jobType: 'cook',
+        values: { fresh: freshPoints(item), spoiled },
+      });
+      job.separationProgress = 0;
     }
     const recipeRemaining =
       job.kind === 'cook' && building
@@ -244,7 +265,6 @@ export function advanceJob(
     }
     if (item.quantity <= 1e-6) {
       w.items = w.items.filter((i) => i.id !== item.id);
-      grid[tileKey(w, item)] = 1;
     }
     job.path = path;
     diagnostics?.record(w, 'JOB_PHASE_CHANGED', {
@@ -307,7 +327,6 @@ export function advanceJob(
         3;
       if (crop.growth >= 1.25) {
         dropFood(w, crop, MATURE_CROP_YIELD, 'raw', 'staple');
-        grid[tileKey(w, crop)] = 0;
         w.crops = w.crops.filter((c) => c.id !== crop.id);
         emit(w, `${pawn.name} harvested a grain crop.`, 'success');
         finish();
@@ -335,7 +354,6 @@ export function advanceJob(
             position: point(job.destination),
             values: { quantity: pawn.carrying.quantity },
           });
-        grid[tileKey(w, job.destination)] = 0;
         pawn.carrying = null;
       }
       finish();
@@ -416,7 +434,7 @@ export function advanceJob(
             },
           });
       }
-      const required = pawn.hunger > 35 ? 4 : COOKING_INPUT;
+      const required = COOKING_INPUT;
       if ((building.ingredientFresh ?? 0) < required) {
         const previousSourceId = job.sourceId;
         const eligibleSources = w.items.filter(
@@ -424,10 +442,9 @@ export function advanceJob(
             i.resource === 'food' &&
             foodType(i) === 'raw' &&
             freshPoints(i) >= 1 &&
-            !requiresFoodSeparation(i) &&
             reservations.available([i.id], pawn.id),
         );
-        const next = (
+        const orderedSources =
           job.amount !== undefined
             ? eligibleSources
             : [...eligibleSources].sort(
@@ -438,8 +455,8 @@ export function advanceJob(
                   (Math.abs(b.x - building.x) +
                     Math.abs(b.y - building.y) * 0.5 -
                     freshPoints(b) * 2),
-              )
-        )[0];
+              );
+        const next = orderedSources.find((i) => findPath(w, pawn, i, true, grid) !== null);
         if (next && reservations.claim([next.id], pawn.id)) {
           if (next.id !== previousSourceId) {
             if (previousSourceId) reservations.releaseKey(previousSourceId, pawn.id);
@@ -449,7 +466,7 @@ export function advanceJob(
           job.sourceId = next.id;
           job.phase = 'source';
           job.waitingForSource = false;
-          job.path = findPath(w, building, next, true, grid) ?? [];
+          job.path = findPath(w, pawn, next, true, grid)!;
           diagnostics?.record(w, 'COOK_SOURCE_SWITCHED', {
             entityId: pawn.id,
             entityName: pawn.name,
@@ -563,6 +580,27 @@ export function advanceJob(
             position: point(building),
           });
           finish();
+          if (job.personalFoodPlan && meal?.foodType === 'meal') {
+            // No scheduler gap: claim this exact output before another pawn runs.
+            reservations.claim([meal.id], pawn.id);
+            pawn.job = {
+              kind: 'eat',
+              sourceId: meal.id,
+              destination: { x: meal.x, y: meal.y },
+              phase: 'target',
+              path: [],
+              progress: 0,
+              keys: [meal.id],
+              personalFoodPlan: true,
+              cookTransactionId: job.cookTransactionId,
+            };
+            diagnostics?.record(w, 'COOK_TO_EAT_TRANSITION', {
+              entityId: pawn.id,
+              targetId: meal.id,
+              jobType: 'eat',
+              values: { transactionId: job.cookTransactionId ?? '', createdMealId: meal.id },
+            });
+          }
           return true;
         }
       }
@@ -653,7 +691,7 @@ export function advanceJob(
           targetId: food.id,
           jobType: 'eat',
           position: point(pawn),
-          values: { hungerBefore: before, hungerAfter: pawn.hunger },
+          values: { hungerBefore: before, hungerAfter: pawn.hunger, foodType: foodType(food) },
         });
         finish();
       }

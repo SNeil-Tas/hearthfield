@@ -38,7 +38,7 @@ export function navigationGrid(w: World): Uint8Array {
   const grid = Uint8Array.from(w.terrain, (t) => (TERRAIN[t].passable ? 1 : 0));
   for (const n of w.nodes) if (n.kind !== 'berries') grid[tileKey(w, n)] = 0;
   for (const b of w.buildings) if (BUILDINGS[b.kind].blocks) grid[tileKey(w, b)] = 0;
-  for (const item of w.items) grid[tileKey(w, item)] = 0;
+  // Resource entities occupy storage, never pawn navigation cells.
   return grid;
 }
 export function findPath(

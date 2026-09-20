@@ -89,13 +89,17 @@ In development, `window.colonyDebug` exposes the simulation, camera, clock, UI s
 
 The prototype intentionally has no combat, raids, medicine, roof/temperature simulation, death, audio, or cloud saves yet. Farming, cooking, shelter, physical logistics, navigation, activity metabolism and construction are live systems rather than scripted animations.
 
+### v0.5.3 self-care and traversal
+
+Hungry colonists select reachable, unreserved prepared meals before cooking or waste handling. Personal cooking reserves its output and continues directly into eating. Critical hunger can interrupt ingredient gathering to eat a ready meal, refunding all buffered and carried ingredients. Resources and waste remain physical but can be walked through; walls, water and solid natural nodes still block movement. Save schema remains 5. See [verification and measured results](docs/V0.5.3-VERIFICATION.md).
+
 ### v0.5.2 storage throughput
 
 Food remains physical and stack-capped at 100 points. Colonists carry up to 100 food points, 30 spoiled-food points, 12 wood, or 12 stone. Stockpiles merge compatible stacks before creating overflow, idle haul work consolidates partial stacks at low priority, and mature grain yields 50 raw-food points. Cooking consumes 100 fresh points and produces an 80-point meal.
 
 ### v0.4 food pressure
 
-Food is measured in points. Raw stacks cap at 100 total points and track fractional fresh/spoiled points separately; more than 10 spoiled points require physical separation into spoiled-food stacks capped at 30. Waste blocks movement and doubles spoilage for fresh food in an 8-neighbour ring. Indoor storage slows spoilage, while rain worsens exposed food. Meals use 100 fresh raw points and provide 80 hunger points.
+Food is measured in points. Raw stacks cap at 100 total points and track fractional fresh/spoiled points separately; more than 10 spoiled points require physical separation into spoiled-food stacks capped at 30. Waste is walkable and doubles spoilage for fresh food in an 8-neighbour ring. Indoor storage slows spoilage, while rain worsens exposed food. Meals use 100 fresh raw points and provide 80 hunger points.
 
 Hungry colonists reserve a cooking station for personal self-care, collect ingredients over multiple trips when necessary, and eat the resulting meal immediately. Cooking skill affects preparation speed, while Cook priority is not required for survival cooking. Save schema 5 migrates older food stacks, preserves fractional points, and adds Dump zones and spoiled-food expiry cohorts. Spoilage above 10 points requires physical separation; composting is intentionally deferred.
 

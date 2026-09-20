@@ -80,6 +80,8 @@ export interface Job {
   amount?: number;
   cookTransactionId?: string;
   waitingForSource?: boolean;
+  personalFoodPlan?: boolean;
+  separationProgress?: number;
 }
 export interface Pawn extends Point {
   id: string;

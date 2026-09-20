@@ -26,6 +26,7 @@ export interface Candidate {
   work?: WorkType;
   amount?: number;
   score: number;
+  personalFoodPlan?: boolean;
 }
 export function workCandidates(w: World): Candidate[] {
   const candidates: Candidate[] = [];
@@ -229,6 +230,19 @@ export function workCandidates(w: World): Candidate[] {
       score: 40 + distance(source, target) * 0.4,
     });
   }
+  for (const item of w.items)
+    if (requiresFoodSeparation(item))
+      candidates.push({
+        kind: 'separate',
+        sourceId: item.id,
+        targetId: item.id,
+        source: item,
+        destination: item,
+        adjacent: true,
+        keys: [item.id],
+        work: 'haul',
+        score: 50,
+      });
   return candidates;
 }
 export function needCandidates(w: World, pawn: Pawn): Candidate[] {
@@ -287,25 +301,19 @@ export function needCandidates(w: World, pawn: Pawn): Candidate[] {
   if (pawn.hunger < 35) {
     for (const station of w.buildings) {
       if (station.kind !== 'cooking' || station.reservedBy) continue;
-      const raw = w.items
-        .filter(
-          (i) =>
-            i.resource === 'food' &&
-            foodType(i) === 'raw' &&
-            freshPoints(i) >= 1 &&
-            !requiresFoodSeparation(i),
-        )
+      const sources = w.items
+        .filter((i) => i.resource === 'food' && foodType(i) === 'raw' && freshPoints(i) >= 1)
         .sort(
           (a, b) =>
             distance(a, station) * 0.5 -
             Math.min(freshPoints(a), 100) * 2 -
             (distance(b, station) * 0.5 - Math.min(freshPoints(b), 100) * 2),
-        )[0];
+        );
       const enoughForEmergencyRecipe =
         w.items
           .filter((item) => item.resource === 'food' && foodType(item) === 'raw')
           .reduce((total, item) => total + freshPoints(item), 0) >= COOKING_INPUT;
-      if (raw && enoughForEmergencyRecipe)
+      for (const raw of enoughForEmergencyRecipe ? sources : [])
         candidates.push({
           kind: 'cook',
           sourceId: raw.id,
@@ -315,20 +323,9 @@ export function needCandidates(w: World, pawn: Pawn): Candidate[] {
           adjacent: true,
           keys: [station.id, raw.id],
           score: -1100,
+          personalFoodPlan: true,
         });
     }
-    for (const item of w.items)
-      if (item.resource === 'food' && foodType(item) === 'raw' && spoiledPoints(item) > 10)
-        candidates.push({
-          kind: 'separate',
-          sourceId: item.id,
-          targetId: item.id,
-          source: item,
-          destination: item,
-          adjacent: true,
-          keys: [item.id],
-          score: -1200,
-        });
   }
   return candidates;
 }

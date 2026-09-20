@@ -20,10 +20,10 @@ describe('survival loop primitives', () => {
     ).toBe(true);
   });
 
-  it('cooks four raw food into one physical meal', () => {
+  it('cooks 100 raw food points into one physical meal', () => {
     const w = flatWorld();
     w.buildings.push({ id: nextId(w, 'building'), x: 8, y: 5, kind: 'cooking' });
-    drop(w, { x: 6, y: 5 }, 'food', 4);
+    drop(w, { x: 6, y: 5 }, 'food', 100);
     for (const pawn of w.pawns) pawn.priorities.cook = 1;
     const sim = new Simulation(w);
     for (let i = 0; i < 1000; i++) sim.step();

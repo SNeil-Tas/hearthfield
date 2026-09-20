@@ -222,9 +222,13 @@ describe('v0.5.2 storage throughput', () => {
       pawn.hunger = 70;
     }
     const sim = new Simulation(w);
-    for (let i = 0; i < 12000; i++) sim.step();
+    let cooked = false;
+    for (let i = 0; i < 12000; i++) {
+      sim.step();
+      cooked ||= w.events.some((event) => event.text.includes('prepared a simple meal'));
+    }
     expect(w.events.some((event) => event.text.includes('harvested a grain crop'))).toBe(true);
-    expect(w.events.some((event) => event.text.includes('prepared a simple meal'))).toBe(true);
+    expect(cooked).toBe(true);
     expect(
       w.items
         .filter((item) => item.resource === 'food' && item.foodType === 'raw')

@@ -21,7 +21,7 @@
 - Development-only debug API; optional path/tick/lock/entity diagnostics; project documentation and Git history.
 - Growing zones, one grain crop, sow/harvest jobs, physical raw food, cooking stations, physical meals, meal preference, deconstruction work, shelter recognition, and sheltered-bed rest consequences.
 - Activity-based metabolism; carrying has the highest hunger/rest cost and activity/productivity is inspectable.
-- Loose stacks are solid navigation obstacles; pickup/drop uses adjacent interaction and storage remains spatial with a 48-unit cell cap.
+- World resource stacks are traversable at normal movement cost; pickup/drop uses adjacent interaction and storage remains physical with resource stack caps.
 - Food has simple raw/meal spoilage timers and spoiled food is retained as visible, inedible waste.
 - Plants, Build and Cook skills affect deterministic work speed; hunger, rest, mood and illness modestly affect productivity.
 - Clear/rain/heavy-rain weather slows outdoor work; mild illness recovers naturally; beds auto-claim and prefer their owner.

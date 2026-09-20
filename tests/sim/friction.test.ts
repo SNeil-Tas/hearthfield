@@ -7,10 +7,10 @@ import { Simulation } from '../../src/sim/simulation';
 import { flatWorld } from './fixtures';
 
 describe('v0.3 friction systems', () => {
-  it('makes loose stacks solid while keeping adjacency pickup reachable', () => {
+  it('keeps loose stacks walkable and adjacency pickup reachable', () => {
     const w = flatWorld();
     drop(w, { x: 4, y: 3 }, 'wood', 12);
-    expect(navigationGrid(w)[4 + 3 * w.width]).toBe(0);
+    expect(navigationGrid(w)[4 + 3 * w.width]).toBe(1);
     expect(findPath(w, { x: 3, y: 3 }, { x: 4, y: 3 }, true)).toEqual([]);
   });
 

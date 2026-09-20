@@ -1,5 +1,6 @@
 import { DAY_TICKS } from './definitions';
 import type { Building, Item, Pawn, Point, World } from './types';
+import { preparedMealOptions } from './selfcare';
 
 export const DIAGNOSTIC_CAPACITY = 5000;
 
@@ -71,6 +72,7 @@ export function diagnosticItem(
     reservedBy: reservations.owner(item.id) ?? null,
     carriedBy: null,
     spoiled: item.spoiled ?? false,
+    spoilsAt: item.spoilsAt ?? null,
     expiryBatches: item.expiryBatches ?? null,
   };
 }
@@ -134,6 +136,14 @@ export function buildDebugReport(
       name: pawn.name,
       position: point(pawn),
       hunger: pawn.hunger,
+      preparedMeals: preparedMealOptions(world, pawn, reservations).map((option) => ({
+        id: option.item.id,
+        edible: option.edible,
+        reachable: option.path !== null,
+        pathCost: option.path?.length ?? null,
+        reservedBy: option.owner ?? null,
+        available: option.available,
+      })),
       rest: pawn.rest,
       mood: pawn.mood,
       health: pawn.health,
