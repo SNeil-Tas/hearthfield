@@ -1,4 +1,4 @@
-import { BUILDINGS } from './definitions';
+import { BUILDINGS, COOKING_INPUT } from './definitions';
 import type { Job, Pawn, Point, WorkType, World } from './types';
 import {
   distance,
@@ -10,6 +10,9 @@ import {
   isFoodSpoiled,
   isDumpTile,
   requiresFoodSeparation,
+  effectiveCarryCapacity,
+  compatibleStacks,
+  stackCapacity,
 } from './world';
 
 export interface Candidate {
@@ -104,28 +107,36 @@ export function workCandidates(w: World): Candidate[] {
       .filter((item) => item.resource === 'food' && foodType(item) === 'meal')
       .reduce((total, item) => total + item.quantity, 0);
     if (meals >= 6) continue;
-    for (const item of w.items)
-      if (
-        item.resource === 'food' &&
-        foodType(item) === 'raw' &&
-        freshPoints(item) >= 1 &&
-        !requiresFoodSeparation(item) &&
-        !station.reservedBy
-      ) {
-        candidates.push({
-          kind: 'cook',
-          sourceId: item.id,
-          targetId: station.id,
-          source: item,
-          destination: station,
-          adjacent: true,
-          keys: [item.id, station.id],
-          work: 'cook',
-          score: 4,
-          amount: 12,
-        });
-        break;
-      }
+    const sources = w.items
+      .filter(
+        (item) =>
+          item.resource === 'food' &&
+          foodType(item) === 'raw' &&
+          freshPoints(item) >= 1 &&
+          !requiresFoodSeparation(item) &&
+          !station.reservedBy,
+      )
+      .sort((a, b) => {
+        const score = (item: typeof a) => {
+          const useful = Math.min(freshPoints(item), effectiveCarryCapacity('food'), 100);
+          return distance(item, station) * 0.5 - useful * 2;
+        };
+        return score(a) - score(b);
+      });
+    for (const item of sources.slice(0, 1)) {
+      const useful = Math.min(freshPoints(item), effectiveCarryCapacity('food'), 100);
+      candidates.push({
+        kind: 'cook',
+        sourceId: item.id,
+        targetId: station.id,
+        source: item,
+        destination: station,
+        adjacent: true,
+        keys: [item.id, station.id],
+        work: 'cook',
+        score: distance(item, station) * 0.5 - useful * 2,
+      });
+    }
   }
   const stored = new Set(w.stockpiles);
   const dumps = w.dumpZones.map((key) => ({ x: key % w.width, y: Math.floor(key / w.width) }));
@@ -149,7 +160,7 @@ export function workCandidates(w: World): Candidate[] {
       (p) =>
         !w.blueprints.some((b) => sameTile(b, p)) &&
         !w.buildings.some((b) => sameTile(b, p)) &&
-        w.items.filter((i) => sameTile(i, p)).reduce((n, i) => n + i.quantity, 0) < 48,
+        true,
     );
   for (const item of w.items)
     if (
@@ -160,11 +171,23 @@ export function workCandidates(w: World): Candidate[] {
         (freshPoints(item) > 1e-6 && !requiresFoodSeparation(item))) &&
       !(item.resource === 'waste' && isDumpTile(w, item))
     ) {
-      // Several destination choices allow haulers to work concurrently.
       const destinations = [...space]
-        .sort((a, b) => distance(a, item) - distance(b, item))
+        .map((destination) => {
+          const compatible = w.items.filter(
+            (candidate) => sameTile(candidate, destination) && compatibleStacks(candidate, item),
+          );
+          const room = compatible.reduce(
+            (n, candidate) => n + Math.max(0, stackCapacity(candidate) - candidate.quantity),
+            0,
+          );
+          return { destination, room, compatible };
+        })
+        .filter(({ room, compatible }) => room > 1e-6 || compatible.length === 0)
+        .sort((a, b) =>
+          b.room > a.room ? -1 : distance(a.destination, item) - distance(b.destination, item),
+        )
         .slice(0, 1);
-      for (const destination of destinations)
+      for (const { destination } of destinations)
         candidates.push({
           kind: 'haul',
           sourceId: item.id,
@@ -176,6 +199,36 @@ export function workCandidates(w: World): Candidate[] {
           score: distance(item, destination) * 0.2,
         });
     }
+  // Low-priority stockpile tidy-up. A job is offered only when it removes a
+  // whole source stack and the destination has real capacity.
+  const activeSources = new Set(
+    w.pawns.flatMap((pawn) => [pawn.job?.sourceId, pawn.job?.targetId]).filter(Boolean),
+  );
+  for (const source of w.items) {
+    if (!w.stockpiles.includes(tileKey(w, source)) || activeSources.has(source.id)) continue;
+    const target = w.items
+      .filter(
+        (candidate) =>
+          candidate.id !== source.id &&
+          w.stockpiles.includes(tileKey(w, candidate)) &&
+          compatibleStacks(candidate, source) &&
+          stackCapacity(candidate) - candidate.quantity >= source.quantity - 1e-6 &&
+          candidate.quantity >= source.quantity,
+      )
+      .sort((a, b) => b.quantity - a.quantity)[0];
+    if (!target || sameTile(source, target)) continue;
+    candidates.push({
+      kind: 'haul',
+      sourceId: source.id,
+      targetId: target.id,
+      source,
+      destination: target,
+      adjacent: true,
+      keys: [source.id, target.id],
+      work: 'haul',
+      score: 40 + distance(source, target) * 0.4,
+    });
+  }
   return candidates;
 }
 export function needCandidates(w: World, pawn: Pawn): Candidate[] {
@@ -234,14 +287,25 @@ export function needCandidates(w: World, pawn: Pawn): Candidate[] {
   if (pawn.hunger < 35) {
     for (const station of w.buildings) {
       if (station.kind !== 'cooking' || station.reservedBy) continue;
-      const raw = w.items.find(
-        (i) =>
-          i.resource === 'food' &&
-          foodType(i) === 'raw' &&
-          freshPoints(i) >= 1 &&
-          !requiresFoodSeparation(i),
-      );
-      if (raw)
+      const raw = w.items
+        .filter(
+          (i) =>
+            i.resource === 'food' &&
+            foodType(i) === 'raw' &&
+            freshPoints(i) >= 1 &&
+            !requiresFoodSeparation(i),
+        )
+        .sort(
+          (a, b) =>
+            distance(a, station) * 0.5 -
+            Math.min(freshPoints(a), 100) * 2 -
+            (distance(b, station) * 0.5 - Math.min(freshPoints(b), 100) * 2),
+        )[0];
+      const enoughForEmergencyRecipe =
+        w.items
+          .filter((item) => item.resource === 'food' && foodType(item) === 'raw')
+          .reduce((total, item) => total + freshPoints(item), 0) >= COOKING_INPUT;
+      if (raw && enoughForEmergencyRecipe)
         candidates.push({
           kind: 'cook',
           sourceId: raw.id,
@@ -251,7 +315,6 @@ export function needCandidates(w: World, pawn: Pawn): Candidate[] {
           adjacent: true,
           keys: [station.id, raw.id],
           score: -1100,
-          amount: 12,
         });
     }
     for (const item of w.items)

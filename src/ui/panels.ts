@@ -13,6 +13,7 @@ import {
   isFoodSpoiled,
 } from '../sim/world';
 import { APP_VERSION, BUILD_ID } from '../build';
+import { formatResourcePoints } from './format';
 
 const toolButton = (tool: string, label: string, detail: string, symbol = tool) =>
   `<button class="catalogue-item" data-action="tool" data-value="${tool}"><span class="catalogue-icon">${icon(symbol)}</span><span><strong>${label}</strong><small>${detail}</small></span><span class="chevron">›</span></button>`;
@@ -137,7 +138,7 @@ export function contextHTML(w: World, ui: UIState, owner?: string) {
           ? `Fresh: ${freshPoints(item).toFixed(1)}<br>Spoiled: ${spoiledPoints(item).toFixed(1)}<br>Total: ${item.quantity.toFixed(1)}${spoiledPoints(item) > 10 ? '<br>Separation required' : ''}${hasAdjacentWaste(w, item) ? '<br>Spoilage: 2× · adjacent waste' : ''}`
           : 'Cooked meal · 80 food points'
         : '';
-    content = `<span class="eyebrow">PHYSICAL SUPPLIES</span><h3>${item.quantity.toFixed(item.resource === 'waste' ? 1 : 0)} ${item.resource === 'waste' ? 'spoiled food' : item.foodType === 'meal' ? 'meal' : item.resource}</h3><p>${freshness}${freshness ? '<br>' : ''}${w.dumpZones.includes(tileKey(w, item)) ? 'In a Dump zone · Decays naturally' : w.stockpiles.includes(tileKey(w, item)) ? 'In a stockpile' : 'On the ground · Awaiting hauling'}</p>`;
+    content = `<span class="eyebrow">PHYSICAL SUPPLIES</span><h3>${formatResourcePoints(item.quantity)} ${item.resource === 'waste' ? 'spoiled food' : item.foodType === 'meal' ? 'meal' : item.resource}</h3><p>${freshness}${freshness ? '<br>' : ''}${w.dumpZones.includes(tileKey(w, item)) ? 'In a Dump zone · Decays naturally' : w.stockpiles.includes(tileKey(w, item)) ? 'In a stockpile' : 'On the ground · Awaiting hauling'}</p>`;
   } else if (crop) {
     content = `<span class="eyebrow">GRAIN CROP</span><h3>${crop.growth >= 1 ? 'Ready to harvest' : crop.growth < 0.1 ? 'Freshly sown' : 'Growing'}</h3><p>${Math.round(crop.growth * 100)}% grown · Plants work will tend it.</p>`;
   } else if (ui.selectedTile) {

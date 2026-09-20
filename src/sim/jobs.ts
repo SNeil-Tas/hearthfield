@@ -18,8 +18,9 @@ import {
   isFoodSpoiled,
   requiresFoodSeparation,
   takeExpiryBatches,
+  effectiveCarryCapacity,
 } from './world';
-import { COOKED_MEAL_POINTS, COOKING_INPUT } from './definitions';
+import { COOKED_MEAL_POINTS, COOKING_INPUT, MATURE_CROP_YIELD } from './definitions';
 import { DiagnosticLog, point } from './diagnostics';
 
 export function interruptJob(
@@ -169,9 +170,10 @@ export function advanceJob(
         ? Math.max(0, COOKING_INPUT - (building.ingredientFresh ?? 0))
         : 12;
     const amount = Math.min(
-      job.amount ?? 12,
+      job.amount ?? effectiveCarryCapacity(item.resource),
+      effectiveCarryCapacity(item.resource),
       item.resource === 'food' && foodType(item) === 'raw' ? freshPoints(item) : item.quantity,
-      bp ? BUILDINGS[bp.kind].cost - bp.delivered : 12,
+      job.kind === 'cook' ? recipeRemaining : bp ? BUILDINGS[bp.kind].cost - bp.delivered : 12,
       recipeRemaining,
     );
     if (amount <= 0) {
@@ -212,6 +214,19 @@ export function advanceJob(
       jobType: job.kind,
       position: point(pawn),
       values: { quantity: amount, resource: item.resource },
+    });
+    diagnostics?.record(w, 'RESOURCE_PICKUP_AMOUNT', {
+      entityId: pawn.id,
+      entityName: pawn.name,
+      targetId: item.id,
+      jobType: job.kind,
+      position: point(pawn),
+      values: {
+        sourceAmount: item.quantity,
+        capacity: effectiveCarryCapacity(item.resource),
+        recipeRemaining,
+        actualPickup: amount,
+      },
     });
     if (item.resource === 'waste')
       diagnostics?.record(w, 'SPOILED_FOOD_PICKED_UP', {
@@ -291,7 +306,7 @@ export function advanceJob(
         (TICK_SECONDS * (1 + pawn.skills.plants * 0.04) * (pawn.productivity ?? 1) * weatherWork) /
         3;
       if (crop.growth >= 1.25) {
-        dropFood(w, crop, 8, 'raw', 'staple');
+        dropFood(w, crop, MATURE_CROP_YIELD, 'raw', 'staple');
         grid[tileKey(w, crop)] = 0;
         w.crops = w.crops.filter((c) => c.id !== crop.id);
         emit(w, `${pawn.name} harvested a grain crop.`, 'success');
@@ -404,7 +419,7 @@ export function advanceJob(
       const required = pawn.hunger > 35 ? 4 : COOKING_INPUT;
       if ((building.ingredientFresh ?? 0) < required) {
         const previousSourceId = job.sourceId;
-        const next = w.items.find(
+        const eligibleSources = w.items.filter(
           (i) =>
             i.resource === 'food' &&
             foodType(i) === 'raw' &&
@@ -412,6 +427,19 @@ export function advanceJob(
             !requiresFoodSeparation(i) &&
             reservations.available([i.id], pawn.id),
         );
+        const next = (
+          job.amount !== undefined
+            ? eligibleSources
+            : [...eligibleSources].sort(
+                (a, b) =>
+                  Math.abs(a.x - building.x) +
+                  Math.abs(a.y - building.y) * 0.5 -
+                  freshPoints(a) * 2 -
+                  (Math.abs(b.x - building.x) +
+                    Math.abs(b.y - building.y) * 0.5 -
+                    freshPoints(b) * 2),
+              )
+        )[0];
         if (next && reservations.claim([next.id], pawn.id)) {
           if (next.id !== previousSourceId) {
             if (previousSourceId) reservations.releaseKey(previousSourceId, pawn.id);
@@ -462,6 +490,19 @@ export function advanceJob(
             });
           }
           job.waitingForSource = true;
+          if (
+            pawn.hunger < 18 &&
+            w.items.some(
+              (item) =>
+                item.resource === 'food' &&
+                (foodType(item) === 'meal' || item.foodKind === 'berries') &&
+                !isFoodSpoiled(w, item) &&
+                item.quantity > 1e-6,
+            )
+          ) {
+            interruptJob(w, pawn, reservations, diagnostics, 'critical hunger fallback food');
+            return true;
+          }
         }
         break;
       }

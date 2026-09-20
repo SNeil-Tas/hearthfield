@@ -55,10 +55,10 @@ Saves belong to the **browser profile and origin**, including port. A LAN addres
 - **Orders → Cancel plans:** remove tree orders, unfinished blueprints, or stockpile cells. Delivered and carried materials are retained. Completed structures can be deconstructed from their context panel.
 - Use **pause / 1× / 2× / 4×** freely. Management screens do not automatically pause the colony.
 - **Architect → Growing zone:** drag over soil or fertile ground. Colonists with Gather/Plants work enabled sow grain, tend it, harvest mature crops, and create physical raw food.
-- **Architect → Cooking station:** place and build one with delivered wood. A cook uses four raw food to make one physical meal; hungry colonists prefer meals and restore more hunger from them.
+- **Architect → Cooking station:** place and build one with delivered wood. A cook uses 100 raw food points to make one physical meal; hungry colonists prefer meals and restore more hunger from them.
 - Select a completed wall, door, bed, or cooking station and choose **Deconstruct**. A builder works on it and returns 60% of its wood as a physical stack.
 
-Resource totals count items on the ground plus carried items. Delivered construction material is committed to its blueprint and no longer included in those totals. No material is deducted when a blueprint is placed. Leave doorways through walls so colonists can reach food and work.
+Resource totals count items on the ground plus carried items. The player-facing Food total counts fresh raw points and cooked meals, excluding spoiled portions and waste; diagnostics retain raw quantities. Delivered construction material is committed to its blueprint and no longer included in those totals. No material is deducted when a blueprint is placed. Leave doorways through walls so colonists can reach food and work.
 
 Desktop shortcuts: **Space** toggles pause; **Escape** closes a panel/tool/selection; **F** focuses the settlement; **D** toggles diagnostics. Buttons remain usable without shortcuts or hover.
 
@@ -89,13 +89,18 @@ In development, `window.colonyDebug` exposes the simulation, camera, clock, UI s
 
 The prototype intentionally has no combat, raids, medicine, roof/temperature simulation, death, audio, or cloud saves yet. Farming, cooking, shelter, physical logistics, navigation, activity metabolism and construction are live systems rather than scripted animations.
 
+### v0.5.2 storage throughput
+
+Food remains physical and stack-capped at 100 points. Colonists carry up to 100 food points, 30 spoiled-food points, 12 wood, or 12 stone. Stockpiles merge compatible stacks before creating overflow, idle haul work consolidates partial stacks at low priority, and mature grain yields 50 raw-food points. Cooking consumes 100 fresh points and produces an 80-point meal.
+
 ### v0.4 food pressure
 
 Food is measured in points. Raw stacks cap at 100 total points and track fractional fresh/spoiled points separately; more than 10 spoiled points require physical separation into spoiled-food stacks capped at 30. Waste blocks movement and doubles spoilage for fresh food in an 8-neighbour ring. Indoor storage slows spoilage, while rain worsens exposed food. Meals use 100 fresh raw points and provide 80 hunger points.
 
 Hungry colonists reserve a cooking station for personal self-care, collect ingredients over multiple trips when necessary, and eat the resulting meal immediately. Cooking skill affects preparation speed, while Cook priority is not required for survival cooking. Save schema 5 migrates older food stacks, preserves fractional points, and adds Dump zones and spoiled-food expiry cohorts. Spoilage above 10 points requires physical separation; composting is intentionally deferred.
+
 ## Diagnostics
 
-Hearthfield v0.5.1 keeps a separate runtime diagnostic trace with a 5,000-event ring buffer. It is intentionally not part of normal colony saves, so save files remain compact; the trace resets when the app restarts or a save is loaded. Events are transition/action based rather than per-tick or per-movement.
+Hearthfield v0.5.2 keeps a separate runtime diagnostic trace with a 5,000-event ring buffer. It is intentionally not part of normal colony saves, so save files remain compact; the trace resets when the app restarts or a save is loaded. Events are transition/action based rather than per-tick or per-movement.
 
 Open More → Diagnostics to mark a moment and export a self-contained JSON report. Supported Android browsers/PWA installs use the Web Share API for file sharing; otherwise the report downloads normally. When a colonist is selected, Copy Selected Colonist Debug copies a concise state snapshot to the clipboard.

@@ -67,5 +67,10 @@ export function shouldInterrupt(pawn: Pawn) {
   if (!pawn.job) return false;
   if (pawn.hunger < 20 && !['eat', 'gather', 'cook', 'separate'].includes(pawn.job.kind))
     return true;
-  return pawn.rest < 12 && !['sleep', 'eat', 'gather'].includes(pawn.job.kind) && pawn.hunger > 18;
+  return (
+    pawn.rest < 12 &&
+    !['sleep', 'eat', 'gather'].includes(pawn.job.kind) &&
+    !(pawn.job.kind === 'cook' && pawn.hunger < 35) &&
+    pawn.hunger > 18
+  );
 }

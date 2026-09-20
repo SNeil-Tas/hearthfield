@@ -1,10 +1,11 @@
 import { DAY_TICKS, JOB_LABELS } from '../sim/definitions';
 import type { World } from '../sim/types';
-import { resourceTotal } from '../sim/world';
+import { resourceTotal, usefulResourceTotal } from '../sim/world';
 import type { Speed } from '../sim/clock';
 import type { UIState } from './state';
 import { icon, escapeHTML as esc } from './icons';
 import { contextHTML, panelHTML } from './panels';
+import { formatResourcePoints } from './format';
 
 export interface DebugMetrics {
   build: string;
@@ -91,7 +92,9 @@ export class Interface {
       this.el(`[data-value="${pawn.id}"]`).classList.toggle('selected', ui.selectedId === pawn.id);
     }
     for (const resource of ['wood', 'stone', 'food'] as const)
-      this.el(`#resource-${resource}`).textContent = String(resourceTotal(w, resource));
+      this.el(`#resource-${resource}`).textContent = formatResourcePoints(
+        resource === 'food' ? usefulResourceTotal(w, resource) : resourceTotal(w, resource),
+      );
     const hour = (Math.floor(((w.tick % DAY_TICKS) / DAY_TICKS) * 24) + 6) % 24;
     this.el('#day-label').textContent =
       `Day ${Math.floor(w.tick / DAY_TICKS) + 1} · ${String(hour).padStart(2, '0')}:${String(Math.floor(((w.tick % 250) / 250) * 60)).padStart(2, '0')}`;
@@ -104,7 +107,7 @@ export class Interface {
     this.el('.guide').hidden = !ui.guide || !!ui.panel || ui.tool !== 'inspect' || !!ui.selectedId;
     const alert = this.el('.alert');
     alert.textContent =
-      resourceTotal(w, 'food') < 6
+      usefulResourceTotal(w, 'food') < 6
         ? 'Food is running low · Gather berry bushes'
         : w.pawns.some((p) => p.hunger < 18)
           ? 'A colonist needs food'

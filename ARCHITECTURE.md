@@ -12,24 +12,24 @@ Pointer / DOM UI → typed Command → Simulation → plain World state → Canv
 
 Simulation modules have no browser, renderer or DOM dependencies. Rendering reads the world and never changes gameplay state. UI state, camera, time multiplier and renderer smoothing are ephemeral. The only production dependencies are browser APIs; npm packages are development/build/test tools.
 
-| Boundary | Location | Responsibility |
-|---|---|---|
-| Bootstrap | `src/main.ts` | Compose services, dispatch actions, frame loop, lifecycle and persistence |
-| World / entities | `src/sim/types.ts`, `world.ts`, `generate.ts` | Plain state, identity, coordinates, physical stacks, seeded generation |
-| Content | `src/sim/definitions.ts` | Terrain, buildings, resource nodes, costs, yields, work and labels |
-| Commands | `src/sim/commands.ts` | Validate player intent; cancel safely; never grant instant resources |
-| Clock | `src/sim/clock.ts` | Fixed 100 ms ticks; 0/1/2/4× independent of render rate |
-| Work discovery | `src/sim/job-board.ts` | Shared work opportunities and urgent personal needs |
-| Assignment | `src/sim/job-assignment.ts` | Priorities, skills, distance, reachability and atomic claims |
-| Execution | `src/sim/jobs.ts` | Travel, carrying, harvest/work progress, delivery, consumption, completion |
-| Needs | `src/sim/needs.ts` | Hunger, rest, health effects, derived mood and interruption |
-| Reservations | `src/sim/reservations.ts` | Atomic multi-key claims and owner-wide release |
-| Navigation | `src/sim/pathfinding.ts` | Four-way A*, binary heap, isolated walkability grid including loose item occupancy |
-| Events | `src/sim/events.ts` | Bounded simulation event journal |
-| Camera / render | `src/view/` | Screen/world conversion, zoom, culling, original shapes, visual smoothing |
-| Touch | `src/input/gestures.ts` | Pointer tracking, thresholded taps, pan, pinch, area/line previews |
-| UI / selection | `src/ui/` | HUD, context, work priorities, panels, tool and selection state |
-| Saves | `src/persistence/` | Validation, codec, database, recovery and browser writer lock |
+| Boundary         | Location                                      | Responsibility                                                                     |
+| ---------------- | --------------------------------------------- | ---------------------------------------------------------------------------------- |
+| Bootstrap        | `src/main.ts`                                 | Compose services, dispatch actions, frame loop, lifecycle and persistence          |
+| World / entities | `src/sim/types.ts`, `world.ts`, `generate.ts` | Plain state, identity, coordinates, physical stacks, seeded generation             |
+| Content          | `src/sim/definitions.ts`                      | Terrain, buildings, resource nodes, costs, yields, work and labels                 |
+| Commands         | `src/sim/commands.ts`                         | Validate player intent; cancel safely; never grant instant resources               |
+| Clock            | `src/sim/clock.ts`                            | Fixed 100 ms ticks; 0/1/2/4× independent of render rate                            |
+| Work discovery   | `src/sim/job-board.ts`                        | Shared work opportunities and urgent personal needs                                |
+| Assignment       | `src/sim/job-assignment.ts`                   | Priorities, skills, distance, reachability and atomic claims                       |
+| Execution        | `src/sim/jobs.ts`                             | Travel, carrying, harvest/work progress, delivery, consumption, completion         |
+| Needs            | `src/sim/needs.ts`                            | Hunger, rest, health effects, derived mood and interruption                        |
+| Reservations     | `src/sim/reservations.ts`                     | Atomic multi-key claims and owner-wide release                                     |
+| Navigation       | `src/sim/pathfinding.ts`                      | Four-way A*, binary heap, isolated walkability grid including loose item occupancy |
+| Events           | `src/sim/events.ts`                           | Bounded simulation event journal                                                   |
+| Camera / render  | `src/view/`                                   | Screen/world conversion, zoom, culling, original shapes, visual smoothing          |
+| Touch            | `src/input/gestures.ts`                       | Pointer tracking, thresholded taps, pan, pinch, area/line previews                 |
+| UI / selection   | `src/ui/`                                     | HUD, context, work priorities, panels, tool and selection state                    |
+| Saves            | `src/persistence/`                            | Validation, codec, database, recovery and browser writer lock                      |
 
 ## Time and execution
 
@@ -49,14 +49,14 @@ A job has a kind, reserved keys, source/target IDs, destination, cached path, ph
 2. Filter/rank candidates by pawn preferences, needs, cooldown and existing reservations.
 3. Find both pickup and delivery routes before reserving a logistics job.
 4. Atomically reserve the source and destination/task.
-5. Walk the cached route; pick up at most twelve units; walk to the destination.
+5. Walk the cached route; pick up up to the resource-specific effective carry capacity; walk to the destination.
 6. Work, deposit or consume; then release all ownership keys.
 
 The source stack, construction task, bed, and haul destination cell use exclusive keys. Multiple colonists cannot consume the same stack, work the same blueprint or occupy the same bed concurrently. Pawns themselves do not block movement: they can pass one another, avoiding a premature crowd/traffic simulation.
 
 Cancellation and urgent needs drop carried resources before clearing the job and reservations. Blueprint cancellation also refunds delivered wood. Harvest and construction progress belong to world objects, so interruption does not erase completed work. Build completion converts delivered wood into a building, after which that wood is no longer loose inventory. A wall cannot finish over a colonist; idle occupants autonomously step aside. Doors and beds are passable.
 
-Stacks stay separate when dropped so active stack IDs/reservations remain stable. Storage cells accept all three resources and permit a bounded aggregate load of 48 units. There are no stockpile filters, merging policies or dedicated inventory containers yet; full cells are omitted from haul candidates.
+Compatible deposits merge into an existing stack up to its resource cap before creating overflow. Raw food caps at 100, spoiled food at 30, and wood/stone retain their existing unconstrained stack semantics. Active job sources/targets are excluded from idle consolidation so reservations remain stable.
 
 ## Navigation and scope of optimization
 
@@ -64,7 +64,7 @@ The 80×80 navigation grid marks deep water, trees, stone outcrops, completed wa
 
 A* uses Manhattan distance and a binary heap. Paths are retained for the job, and the next tile is revalidated as the pawn moves. A blocked route aborts safely and returns to normal job selection. The grid refreshes on world topology changes and at the slow system rate.
 
-The current board rebuild is linear over world objects, with delivery/stockpile candidate cross-products. It is adequate for the measured first slice, not a claim of unlimited scaling. Large blueprint fields, fragmented stacks and frequent unreachable routes are the likely next pressure points. Add spatial buckets, connectivity labels and dirty indices when measured workloads justify them; keep the pathfinder API isolated.
+The current board rebuild is linear over world objects, with delivery/stockpile candidate cross-products. Low-priority consolidation targets compatible partial stacks only when it removes a source stack and materially reduces fragmentation. It is adequate for the measured first slice, not a claim of unlimited scaling. Large blueprint fields, fragmented stacks and frequent unreachable routes are the likely next pressure points. Add spatial buckets, connectivity labels and dirty indices when measured workloads justify them; keep the pathfinder API isolated.
 
 ## Rendering and mobile interaction
 
@@ -92,7 +92,7 @@ The static deployment remains a Vite build published by GitHub Pages. `index.htm
 
 Growing zones are persistent tile keys. A zone creates a sow candidate for an empty tile; sowing creates a persistent `Crop` entity. Crop growth advances every ten simulation ticks toward a 2,400-tick maturity period, independent of rendering. Mature crops create harvest candidates and yield physical raw food stacks. The existing Plants/Gather work priority, paths, and reservations govern both sowing and harvesting.
 
-Food remains a physical `food` resource with an optional `foodType`: legacy and harvested food is `raw`, while cooking produces `meal`. A cooking station is an ordinary blueprint/building. Its automatic job reserves one raw stack and the station, consumes four raw units over time, and drops one meal item. Meals are ranked ahead of raw food for hungry colonists and restore more hunger. The station stops automatically when six meals are available.
+Food remains a physical `food` resource with an optional `foodType`: legacy and harvested food is `raw`, while cooking produces `meal`. A cooking station is an ordinary blueprint/building. Its automatic job reserves one raw stack and the station, gathers up to 100 fresh points per trip, consumes the 100-point recipe over time, and drops one meal item. Sources are ranked by useful pickup relative to travel cost. Meals are ranked ahead of raw food for hungry colonists and restore more hunger. The station stops automatically when six meals are available.
 
 Completed buildings can be marked for deconstruction. The existing Build work path reserves the building, removes it after work completes, and drops 60% of its wood cost as a normal physical stack. Unfinished blueprints still use their separate cancellation/refund path.
 

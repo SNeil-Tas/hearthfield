@@ -44,7 +44,7 @@ export const BUILDINGS: Record<
     cost: 12,
     work: 8,
     blocks: false,
-    description: 'Turns four raw food into one satisfying meal.',
+    description: 'Turns 100 raw food points into one satisfying meal.',
   },
 };
 export const NODES: Record<
@@ -79,7 +79,16 @@ export const JOB_LABELS = {
 export const CROP_GROWTH_TICKS = 2400;
 export const FOOD_STACK_CAP = 100;
 export const SPOILED_STACK_CAP = 30;
+export const WOOD_CARRY_CAP = 12;
+export const STONE_CARRY_CAP = 12;
+export const RESOURCE_CARRY_CAPACITY = {
+  food: FOOD_STACK_CAP,
+  waste: SPOILED_STACK_CAP,
+  wood: WOOD_CARRY_CAP,
+  stone: STONE_CARRY_CAP,
+} as const;
 export const SPOILED_FOOD_LIFETIME = 5 * 60 * 10;
 export const SPOILAGE_SEPARATION_THRESHOLD = 10;
 export const COOKING_INPUT = 100;
 export const COOKED_MEAL_POINTS = 80;
+export const MATURE_CROP_YIELD = 50;

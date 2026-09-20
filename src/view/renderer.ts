@@ -1,4 +1,5 @@
 import { BUILDINGS, NODES, TERRAIN } from '../sim/definitions';
+import { formatResourcePoints } from '../ui/format';
 import type { BuildingKind, Point, World } from '../sim/types';
 import type { UIState } from '../ui/state';
 import { Camera } from './camera';
@@ -185,8 +186,8 @@ export class Renderer {
           c.fillStyle = '#f5f1db';
           c.strokeStyle = '#435540';
           c.lineWidth = 3;
-          c.strokeText(String(item.quantity), p.x, p.y + z * 0.42);
-          c.fillText(String(item.quantity), p.x, p.y + z * 0.42);
+          c.strokeText(formatResourcePoints(item.quantity), p.x, p.y + z * 0.42);
+          c.fillText(formatResourcePoints(item.quantity), p.x, p.y + z * 0.42);
         }
       }
     for (const node of w.nodes)
