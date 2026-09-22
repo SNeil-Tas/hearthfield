@@ -24,7 +24,8 @@ export function applyCommand(w: World, command: Command, reservations: Reservati
         !w.nodes.some((n) => sameTile(n, p)) &&
         !w.buildings.some((b) => sameTile(b, p)) &&
         !w.blueprints.some((b) => sameTile(b, p)) &&
-        !w.items.some((item) => sameTile(item, p));
+        !w.items.some((item) => sameTile(item, p)) &&
+        !w.stockpiles.includes(key);
       if (command.cancel) {
         if (w.growingZones.includes(key)) {
           w.growingZones = w.growingZones.filter((k) => k !== key);
@@ -99,7 +100,9 @@ export function applyCommand(w: World, command: Command, reservations: Reservati
         walkable(w, p) &&
         !w.buildings.some((b) => sameTile(b, p)) &&
         !w.blueprints.some((b) => sameTile(b, p)) &&
-        !w.stockpiles.includes(tileKey(w, p))
+        !w.stockpiles.includes(tileKey(w, p)) &&
+        !w.growingZones.includes(tileKey(w, p)) &&
+        !w.crops.some((c) => sameTile(c, p))
       ) {
         w.stockpiles.push(tileKey(w, p));
         changed++;

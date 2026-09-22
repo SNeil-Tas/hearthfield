@@ -2,6 +2,7 @@ import { BUILDINGS, NODES, TERRAIN, SPOILED_FOOD_LIFETIME } from '../sim/definit
 import type { WeatherKind } from '../sim/types';
 import { Reservations } from '../sim/reservations';
 import { interruptJob } from '../sim/jobs';
+import { dropFood, FOOD_LIFETIME, tileKey } from '../sim/world';
 import type { World } from '../sim/types';
 
 export interface SaveEnvelope {
@@ -236,9 +237,23 @@ export function decode(raw: unknown): { world: World; savedAt: number } {
     throw new Error('Save integrity check failed.');
   const world: unknown = migrate(JSON.parse(e.payload), e.version);
   validateWorld(world);
+  // Legacy zone overlap is identifiable; keep crops and physical ground items intact.
+  const growing = new Set([...world.growingZones, ...world.crops.map((c) => tileKey(world, c))]);
+  world.stockpiles = world.stockpiles.filter((key) => !growing.has(key));
+  for (const pawn of world.pawns)
+    if (pawn.carrying?.resource === 'food')
+      pawn.carrying.spoilsAt ??= world.tick + FOOD_LIFETIME[pawn.carrying.foodType ?? 'raw'];
   // Jobs are ephemeral. Resume from physical state, releasing all locks and dropping cargo.
   // This also makes future scheduler migrations independent of the persistent schema.
   const reservations = new Reservations();
   for (const pawn of world.pawns) interruptJob(world, pawn, reservations);
+  // Release orphan buffers too; their physical contents are refunded once.
+  for (const station of world.buildings) {
+    if (station.kind !== 'cooking') continue;
+    if (station.ingredientFresh) dropFood(world, station, station.ingredientFresh);
+    station.ingredientFresh = 0;
+    station.cookingProgress = 0;
+    station.reservedBy = undefined;
+  }
   return { world, savedAt: e.savedAt };
 }

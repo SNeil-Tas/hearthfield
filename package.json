@@ -1,6 +1,6 @@
 {
   "name": "colony-sim",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "private": true,
   "type": "module",
   "scripts": {
@@ -12,7 +12,8 @@
     "test": "vitest run",
     "test:browser": "playwright test",
     "format": "prettier --write \"src/**/*.{ts,css}\" \"tests/**/*.ts\" \"scripts/*.mjs\" \"*.ts\" package.json tsconfig.json index.html",
-    "format:check": "prettier --check \"src/**/*.{ts,css}\" \"tests/**/*.ts\" \"scripts/*.mjs\" \"*.ts\" package.json tsconfig.json index.html"
+    "format:check": "prettier --check \"src/**/*.{ts,css}\" \"tests/**/*.ts\" \"scripts/*.mjs\" \"*.ts\" package.json tsconfig.json index.html",
+    "test:food-audit": "vitest run --config vitest.food-audit.config.ts --disableConsoleIntercept"
   },
   "devDependencies": {
     "@playwright/test": "^1.55.0",

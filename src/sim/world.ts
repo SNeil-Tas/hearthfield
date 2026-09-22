@@ -120,10 +120,11 @@ export function compatibleStacks(
     return foodType(a) === foodType(b) && (a.foodKind ?? 'staple') === (b.foodKind ?? 'staple');
   return a.resource !== 'waste' || b.resource === 'waste';
 }
-function mergeInto(target: any, incoming: any, amount: number, w: World) {
+function mergeInto(target: Stack, incoming: Stack, amount: number, w: World) {
+  const freshBefore = freshPoints(target);
   target.quantity += amount;
   if (target.resource === 'food' && foodType(target) === 'raw') {
-    target.freshPoints = freshPoints(target) + freshPoints(incoming) * (amount / incoming.quantity);
+    target.freshPoints = freshBefore + freshPoints(incoming) * (amount / incoming.quantity);
     target.spoiledPoints =
       spoiledPoints(target) + spoiledPoints(incoming) * (amount / incoming.quantity);
     target.quantity = target.freshPoints + target.spoiledPoints;
@@ -134,46 +135,66 @@ function mergeInto(target: any, incoming: any, amount: number, w: World) {
   if (target.resource === 'food' && foodType(target) === 'meal')
     target.spoilsAt = Math.min(target.spoilsAt ?? w.tick, incoming.spoilsAt ?? w.tick);
 }
-export function depositStack(w: World, p: Point, stack: Stack) {
+/** Crops and growing zones are never storage, including overlapping legacy zones. */
+export function validStorageTile(w: World, p: Point) {
+  return (
+    w.stockpiles.includes(tileKey(w, p)) &&
+    walkable(w, p) &&
+    !w.growingZones.includes(tileKey(w, p)) &&
+    !w.crops.some((c) => sameTile(c, p)) &&
+    !w.buildings.some((b) => sameTile(b, p)) &&
+    !w.blueprints.some((b) => sameTile(b, p))
+  );
+}
+function portionOf(stack: Stack, amount: number): Stack {
+  return {
+    resource: stack.resource,
+    foodType: stack.foodType,
+    foodKind: stack.foodKind,
+    spoilsAt: stack.spoilsAt,
+    spoiled: stack.spoiled,
+    expiryBatches: stack.expiryBatches,
+    quantity: amount,
+    ...(stack.resource === 'food' && foodType(stack) === 'raw'
+      ? {
+          freshPoints: (freshPoints(stack) * amount) / stack.quantity,
+          spoiledPoints: (spoiledPoints(stack) * amount) / stack.quantity,
+        }
+      : {}),
+  };
+}
+/** Transfers only accepted inventory; caller retains the returned remainder. */
+export function depositStack(w: World, p: Point, stack: Stack): number {
+  if (!validStorageTile(w, p)) return stack.quantity;
   let remaining = stack.quantity;
-  const candidates = w.items.filter((item) => sameTile(item, p) && compatibleStacks(item, stack));
-  for (const target of candidates) {
-    const room = stackCapacity(target) - target.quantity;
-    if (room <= 1e-6) continue;
-    const amount = Math.min(room, remaining);
-    const portion = { ...stack, quantity: amount };
-    if (stack.resource === 'food' && foodType(stack) === 'raw') {
-      portion.freshPoints = freshPoints(stack) * (amount / stack.quantity);
-      portion.spoiledPoints = spoiledPoints(stack) * (amount / stack.quantity);
+  const tiles = [
+    p,
+    ...w.stockpiles
+      .map((k) => ({ x: k % w.width, y: Math.floor(k / w.width) }))
+      .filter((tile) => !sameTile(tile, p) && validStorageTile(w, tile)),
+  ];
+  for (const tile of tiles) {
+    const occupants = w.items.filter((item) => sameTile(item, tile));
+    for (const target of occupants.filter((item) => compatibleStacks(item, stack))) {
+      const amount = Math.min(Math.max(0, stackCapacity(target) - target.quantity), remaining);
+      if (amount > 1e-6) {
+        mergeInto(target, portionOf(stack, amount), amount, w);
+        remaining -= amount;
+      }
     }
-    mergeInto(target, portion, amount, w);
-    remaining -= amount;
-    if (remaining <= 1e-6) return;
-  }
-  if (remaining > 1e-6) {
-    const overflowTile = w.stockpiles
-      .map((key) => ({ x: key % w.width, y: Math.floor(key / w.width) }))
-      .find(
-        (candidate) =>
-          !sameTile(candidate, p) &&
-          !w.items.some((item) => sameTile(item, candidate)) &&
-          !w.buildings.some((building) => sameTile(building, candidate)) &&
-          !w.blueprints.some((blueprint) => sameTile(blueprint, candidate)),
-      );
-    const destination = overflowTile ?? p;
-    const portion = { ...stack, quantity: remaining };
-    if (stack.resource === 'food' && foodType(stack) === 'raw') {
-      portion.freshPoints = freshPoints(stack) * (remaining / stack.quantity);
-      portion.spoiledPoints = spoiledPoints(stack) * (remaining / stack.quantity);
-      portion.quantity = portion.freshPoints + portion.spoiledPoints;
+    if (!occupants.length && remaining > 1e-6) {
+      const amount = Math.min(stackCapacity(stack), remaining);
+      w.items.push({
+        id: nextId(w, 'item'),
+        x: Math.round(tile.x),
+        y: Math.round(tile.y),
+        ...portionOf(stack, amount),
+      });
+      remaining -= amount;
     }
-    w.items.push({
-      id: nextId(w, 'item'),
-      x: Math.round(destination.x),
-      y: Math.round(destination.y),
-      ...portion,
-    } as any);
+    if (remaining <= 1e-6) return 0;
   }
+  return remaining;
 }
 export function dropFood(
   w: World,
@@ -215,17 +236,7 @@ export function addSpoiledFood(w: World, p: Point, quantity: number, expiresAt: 
     remaining -= amount;
   }
 }
-export function dropStack(
-  w: World,
-  p: Point,
-  stack: {
-    resource: Resource;
-    quantity: number;
-    foodType?: FoodType;
-    foodKind?: 'berries' | 'staple';
-    expiryBatches?: ExpiryBatch[];
-  },
-) {
+export function dropStack(w: World, p: Point, stack: Stack) {
   if (stack.resource === 'waste') {
     if (stack.expiryBatches?.length) {
       for (const batch of stack.expiryBatches)
@@ -235,8 +246,19 @@ export function dropStack(
     }
     return;
   }
-  if (w.stockpiles.includes(tileKey(w, p))) depositStack(w, p, stack);
-  else drop(w, p, stack.resource, stack.quantity, stack.foodType, stack.foodKind);
+  const remaining = validStorageTile(w, p) ? depositStack(w, p, stack) : stack.quantity;
+  // Ground drops transfer inventory; they must not rejuvenate food.
+  let left = remaining;
+  while (left > 1e-6) {
+    const amount = Math.min(stackCapacity(stack), left);
+    w.items.push({
+      id: nextId(w, 'item'),
+      x: Math.round(p.x),
+      y: Math.round(p.y),
+      ...portionOf(stack, amount),
+    });
+    left -= amount;
+  }
 }
 export function takeExpiryBatches(item: { expiryBatches?: ExpiryBatch[] }, quantity: number) {
   let remaining = quantity;
@@ -282,23 +304,43 @@ export function resourceTotal(w: World, resource: Resource) {
 export function usefulResourceTotal(w: World, resource: Resource) {
   if (resource !== 'food') return resourceTotal(w, resource);
   const total =
-    w.items.reduce((n, item) => n + foodPoints(item), 0) +
+    w.items.reduce(
+      (n, item) => n + (foodType(item) === 'meal' && isFoodSpoiled(w, item) ? 0 : foodPoints(item)),
+      0,
+    ) +
+    w.buildings.reduce((n, b) => n + (b.kind === 'cooking' ? (b.ingredientFresh ?? 0) : 0), 0) +
     w.pawns.reduce(
       (n, p) =>
         n +
         (p.carrying?.resource === 'food'
           ? p.carrying.foodType === 'meal'
-            ? p.carrying.quantity * 80
+            ? isFoodSpoiled(w, p.carrying)
+              ? 0
+              : p.carrying.quantity * 80
             : freshPoints(p.carrying)
           : 0),
       0,
     );
   return Math.round(total * 1e6) / 1e6;
 }
-export function advanceFoodSpoilage(w: World, item: any, _legacySheltered?: Set<number>) {
-  if (item.resource !== 'food' || foodType(item) !== 'raw') return undefined;
+export function advanceFoodSpoilage(
+  w: World,
+  item: any,
+  _legacySheltered?: Set<number>,
+  onSpoiled?: (amount: number) => void,
+) {
+  if (item.resource !== 'food') return undefined;
+  if (foodType(item) === 'meal') {
+    if (isFoodSpoiled(w, item)) {
+      onSpoiled?.(item.quantity * 80);
+      w.items = w.items.filter((candidate) => candidate.id !== item.id);
+      addSpoiledFood(w, item, item.quantity * 80, w.tick + SPOILED_FOOD_LIFETIME);
+    }
+    return undefined;
+  }
   const fresh = freshPoints(item);
   if (fresh <= 1e-6) {
+    if (fresh > 0) onSpoiled?.(fresh);
     if (spoiledPoints(item) <= 1e-6)
       w.items = w.items.filter((candidate) => candidate.id !== item.id);
     else {
@@ -326,6 +368,7 @@ export function advanceFoodSpoilage(w: World, item: any, _legacySheltered?: Set<
     (hasAdjacentWaste(w, item) ? 2 : 1) *
     (indoor ? 0.78 : 1);
   const converted = Math.min(fresh, fresh * rate * 100);
+  onSpoiled?.(converted);
   item.freshPoints = fresh - converted;
   item.spoiledPoints = (item.spoiledPoints ?? 0) + converted;
   item.quantity = item.freshPoints + item.spoiledPoints;

@@ -21,6 +21,8 @@ import {
   requiresFoodSeparation,
   takeExpiryBatches,
   effectiveCarryCapacity,
+  validStorageTile,
+  depositStack,
 } from './world';
 import { COOKED_MEAL_POINTS, COOKING_INPUT, MATURE_CROP_YIELD } from './definitions';
 import { DiagnosticLog, point } from './diagnostics';
@@ -189,6 +191,7 @@ export function advanceJob(
       job.kind === 'cook' && building
         ? Math.max(0, COOKING_INPUT - (building.ingredientFresh ?? 0))
         : 12;
+    const sourceFresh = freshPoints(item);
     const amount = Math.min(
       job.amount ?? effectiveCarryCapacity(item.resource),
       effectiveCarryCapacity(item.resource),
@@ -225,6 +228,10 @@ export function advanceJob(
       foodType: foodType(item),
       foodKind: item.foodKind,
       expiryBatches: item.expiryBatches,
+      spoilsAt: item.spoilsAt,
+      ...(item.resource === 'food' && foodType(item) === 'raw'
+        ? { freshPoints: amount, spoiledPoints: 0 }
+        : {}),
     };
     if (item.resource === 'waste') pawn.carrying.expiryBatches = takeExpiryBatches(item, amount);
     diagnostics?.record(w, 'ITEM_PICKED_UP', {
@@ -259,7 +266,7 @@ export function advanceJob(
       });
     item.quantity -= amount;
     if (item.resource === 'food' && foodType(item) === 'raw') {
-      item.freshPoints = Math.max(0, freshPoints(item) - amount);
+      item.freshPoints = Math.max(0, sourceFresh - amount);
       item.quantity = freshPoints(item) + spoiledPoints(item);
     }
     if (item.quantity <= 1e-6) {
@@ -326,6 +333,13 @@ export function advanceJob(
         3;
       if (crop.growth >= 1.25) {
         dropFood(w, crop, MATURE_CROP_YIELD, 'raw', 'staple');
+        diagnostics?.record(w, 'CROP_HARVEST', {
+          entityId: pawn.id,
+          targetId: crop.id,
+          jobType: 'harvest',
+          position: point(crop),
+          values: { createdItemId: w.items[w.items.length - 1]!.id, produced: MATURE_CROP_YIELD },
+        });
         w.crops = w.crops.filter((c) => c.id !== crop.id);
         emit(w, `${pawn.name} harvested a grain crop.`, 'success');
         finish();
@@ -335,7 +349,35 @@ export function advanceJob(
     }
     case 'haul': {
       if (pawn.carrying) {
-        dropStack(w, job.destination, pawn.carrying);
+        if (pawn.carrying.resource === 'waste') dropStack(w, job.destination, pawn.carrying);
+        else {
+          const before = pawn.carrying.quantity;
+          const remaining = depositStack(w, job.destination, pawn.carrying);
+          diagnostics?.record(w, 'RESOURCE_DEPOSIT', {
+            entityId: pawn.id,
+            jobType: 'haul',
+            position: point(job.destination),
+            values: {
+              requested: before,
+              accepted: before - remaining,
+              remaining,
+              validStorage: validStorageTile(w, job.destination),
+            },
+          });
+          if (remaining > 1e-6) {
+            const fraction = remaining / before;
+            dropStack(w, pawn, {
+              ...pawn.carrying,
+              quantity: remaining,
+              ...(pawn.carrying.resource === 'food' && foodType(pawn.carrying) === 'raw'
+                ? {
+                    freshPoints: freshPoints(pawn.carrying) * fraction,
+                    spoiledPoints: spoiledPoints(pawn.carrying) * fraction,
+                  }
+                : {}),
+            });
+          }
+        }
         diagnostics?.record(w, 'ITEM_DROPPED', {
           entityId: pawn.id,
           entityName: pawn.name,
@@ -559,7 +601,11 @@ export function advanceJob(
             targetId: building.id,
             jobType: 'cook',
             position: point(building),
-            values: { mealPoints: COOKED_MEAL_POINTS },
+            values: {
+              mealPoints: COOKED_MEAL_POINTS,
+              inputPoints: required,
+              conversionLoss: required - COOKED_MEAL_POINTS,
+            },
           });
           const meal = w.items[w.items.length - 1];
           if (meal?.foodType === 'meal')
@@ -649,6 +695,13 @@ export function advanceJob(
       if (!building) break;
       job.progress += TICK_SECONDS * (1 + pawn.skills.build * 0.06) * (pawn.productivity ?? 1);
       if (job.progress >= BUILDINGS[building.kind].work) {
+        for (const cook of w.pawns)
+          if (cook.job?.kind === 'cook' && cook.job.targetId === building.id)
+            interruptJob(w, cook, reservations, diagnostics, 'station deconstructed');
+        if (building.ingredientFresh) {
+          dropFood(w, building, building.ingredientFresh);
+          building.ingredientFresh = 0;
+        }
         w.buildings = w.buildings.filter((b) => b.id !== building.id);
         if (isRoomBoundary(building.kind))
           roomTopology(w).invalidate(`demolished ${building.kind}`);
@@ -672,10 +725,12 @@ export function advanceJob(
       }
       if (job.progress >= 2) {
         const before = pawn.hunger;
-        food.quantity--;
+        const freshBefore = freshPoints(food);
+        const eaten = Math.min(1, food.quantity);
+        food.quantity -= eaten;
         if (food.resource === 'food' && foodType(food) === 'raw')
-          food.freshPoints = Math.max(0, freshPoints(food) - 1);
-        if (!food.quantity) w.items = w.items.filter((i) => i.id !== food.id);
+          food.freshPoints = Math.max(0, freshBefore - eaten);
+        if (food.quantity <= 1e-6) w.items = w.items.filter((i) => i.id !== food.id);
         pawn.hunger = Math.min(
           100,
           pawn.hunger +
@@ -693,7 +748,12 @@ export function advanceJob(
           targetId: food.id,
           jobType: 'eat',
           position: point(pawn),
-          values: { hungerBefore: before, hungerAfter: pawn.hunger, foodType: foodType(food) },
+          values: {
+            hungerBefore: before,
+            hungerAfter: pawn.hunger,
+            foodType: foodType(food),
+            consumedPoints: eaten * (foodType(food) === 'meal' ? COOKED_MEAL_POINTS : 1),
+          },
         });
         finish();
       }

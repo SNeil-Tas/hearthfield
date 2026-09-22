@@ -26,6 +26,8 @@ export type JobKind =
   | 'separate'
   | 'deconstruct';
 export interface Stack {
+  spoilsAt?: number;
+  spoiled?: boolean;
   resource: Resource;
   quantity: number;
   foodType?: FoodType;

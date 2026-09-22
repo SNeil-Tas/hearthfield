@@ -13,6 +13,7 @@ import {
   effectiveCarryCapacity,
   compatibleStacks,
   stackCapacity,
+  validStorageTile,
 } from './world';
 
 export interface Candidate {
@@ -157,12 +158,7 @@ export function workCandidates(w: World): Candidate[] {
     }
   const space = w.stockpiles
     .map((k) => ({ x: k % w.width, y: Math.floor(k / w.width) }))
-    .filter(
-      (p) =>
-        !w.blueprints.some((b) => sameTile(b, p)) &&
-        !w.buildings.some((b) => sameTile(b, p)) &&
-        true,
-    );
+    .filter((p) => validStorageTile(w, p));
   for (const item of w.items)
     if (
       item.quantity > 1e-6 &&
@@ -183,7 +179,10 @@ export function workCandidates(w: World): Candidate[] {
           );
           return { destination, room, compatible };
         })
-        .filter(({ room, compatible }) => room > 1e-6 || compatible.length === 0)
+        .filter(
+          ({ room, destination }) =>
+            room > 1e-6 || !w.items.some((item) => sameTile(item, destination)),
+        )
         .sort((a, b) =>
           b.room > a.room ? -1 : distance(a.destination, item) - distance(b.destination, item),
         )
@@ -206,12 +205,12 @@ export function workCandidates(w: World): Candidate[] {
     w.pawns.flatMap((pawn) => [pawn.job?.sourceId, pawn.job?.targetId]).filter(Boolean),
   );
   for (const source of w.items) {
-    if (!w.stockpiles.includes(tileKey(w, source)) || activeSources.has(source.id)) continue;
+    if (!validStorageTile(w, source) || activeSources.has(source.id)) continue;
     const target = w.items
       .filter(
         (candidate) =>
           candidate.id !== source.id &&
-          w.stockpiles.includes(tileKey(w, candidate)) &&
+          validStorageTile(w, candidate) &&
           compatibleStacks(candidate, source) &&
           stackCapacity(candidate) - candidate.quantity >= source.quantity - 1e-6 &&
           candidate.quantity >= source.quantity,

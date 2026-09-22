@@ -66,8 +66,14 @@ export class Simulation {
     w.tick++;
     advanceWeather(w, this.diagnostics);
     if (w.tick % 100 === 0) {
+      let spoiled = 0;
+      let affectedStacks = 0;
+      const recordLoss = (amount: number) => {
+        spoiled += amount;
+        affectedStacks++;
+      };
       for (const item of [...w.items]) {
-        const normalized = advanceFoodSpoilage(w, item);
+        const normalized = advanceFoodSpoilage(w, item, undefined, recordLoss);
         if (normalized)
           this.diagnostics.record(w, 'RAW_FOOD_NORMALIZED_TO_WASTE', {
             targetId: normalized.itemId,
@@ -78,6 +84,11 @@ export class Simulation {
             },
           });
       }
+      if (spoiled > 0)
+        this.diagnostics.record(w, 'FOOD_SPOILED', {
+          reason: 'periodic spoilage pass',
+          values: { spoiled, affectedStacks },
+        });
       advanceWasteDecay(w);
       for (const pawn of w.pawns) {
         if (pawn.illnessUntil !== undefined && pawn.illnessUntil <= w.tick) {

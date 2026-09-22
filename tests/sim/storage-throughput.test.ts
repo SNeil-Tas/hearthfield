@@ -38,7 +38,7 @@ describe('v0.5.2 storage throughput', () => {
     });
     expect(w.items.filter((item) => item.resource === 'food')).toHaveLength(1);
     expect(w.items[0]!.quantity).toBe(100);
-    depositStack(w, tile, {
+    const remaining = depositStack(w, tile, {
       resource: 'food',
       quantity: 50,
       foodType: 'raw',
@@ -46,7 +46,8 @@ describe('v0.5.2 storage throughput', () => {
       freshPoints: 50,
       spoiledPoints: 0,
     });
-    expect(w.items.map((item) => item.quantity)).toEqual([100, 50]);
+    expect(w.items.map((item) => item.quantity)).toEqual([100]);
+    expect(remaining).toBe(50);
   });
 
   it('preserves fractional quantities during merges', () => {
