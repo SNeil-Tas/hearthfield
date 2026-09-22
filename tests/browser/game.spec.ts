@@ -6,6 +6,138 @@ async function start(page: Page) {
   await page.getByRole('button', { name: 'Dismiss getting started' }).click();
   await page.getByRole('button', { name: 'Pause simulation' }).click();
 }
+test('mobile weather and wetness feedback follows exposure and drying', async ({ page }) => {
+  await start(page);
+  await page.setViewportSize({ width: 667, height: 375 });
+  await page.evaluate(() => {
+    const d = (window as any).colonyDebug,
+      w = d.simulation.world;
+    w.weather = 'rain';
+    w.weatherStartedAt = w.tick;
+    w.weatherUntil = w.tick + 10000;
+    for (const pawn of w.pawns) {
+      pawn.priorities = { plants: 0, build: 0, haul: 0, cook: 0 };
+      pawn.job = null;
+      pawn.wetness = 0;
+    }
+    d.ui.selectedId = w.pawns[0].id;
+    d.step(30);
+  });
+  await expect(page.locator('#weather-label')).toHaveText('Rain');
+  await expect(page.locator('#weather-label')).toBeVisible();
+  await expect(page.locator('.context')).toContainText('Wetness: Damp / In rain');
+  await page.screenshot({ path: 'test-results/mobile-rain.png' });
+  await page.evaluate(async () => {
+    const d = (window as any).colonyDebug,
+      w = d.simulation.world;
+    const modulePath = '/src/sim/topology.ts';
+    (await import(modulePath)).roomTopology(w).setRoof(w.pawns[0], true);
+    w.pawns[0].wetness = 50;
+    w.weather = 'storm';
+    d.step(10);
+  });
+  await expect(page.locator('#weather-label')).toHaveText('Storm');
+  await expect(page.locator('.context')).toContainText('Wetness: Wet / Drying');
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.locator('#weather-label')).toBeInViewport();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
+  await page.screenshot({ path: 'test-results/portrait-storm.png' });
+  await page.evaluate(() => {
+    const d = (window as any).colonyDebug;
+    d.simulation.world.weather = 'clear';
+    d.step(1000);
+  });
+  await expect(page.locator('#weather-label')).toHaveText('Clear');
+  await expect(page.locator('.context')).toContainText('Wetness: Dry');
+});
+
+test('rain rendering varies with intensity, respects roofs, and does not mutate simulation state', async ({
+  page,
+}) => {
+  await start(page);
+  const result = await page.evaluate(async () => {
+    const rendererPath = '/src/view/renderer.ts',
+      cameraPath = '/src/view/camera.ts',
+      topologyPath = '/src/sim/topology.ts',
+      uiPath = '/src/ui/state.ts';
+    const { Renderer } = await import(rendererPath),
+      { Camera } = await import(cameraPath),
+      { roomTopology } = await import(topologyPath),
+      { initialUI } = await import(uiPath);
+    const w = structuredClone((window as any).colonyDebug.simulation.world);
+    const canvas = document.createElement('canvas');
+    canvas.width = 400;
+    canvas.height = 240;
+    const camera = new Camera();
+    camera.width = 400;
+    camera.height = 240;
+    const renderer = new Renderer(canvas, camera),
+      ui = initialUI();
+    w.weather = 'clear';
+    renderer.draw(w, ui, 0, true);
+    const clear = canvas.toDataURL();
+    w.weather = 'rain';
+    renderer.draw(w, ui, 0, true);
+    const rain = canvas.toDataURL();
+    w.weather = 'storm';
+    const before = JSON.stringify(w);
+    renderer.draw(w, ui, 0.016, false);
+    const storm = canvas.toDataURL();
+    const unchanged = before === JSON.stringify(w);
+    for (let x = 25; x <= 55; x++)
+      for (let y = 25; y <= 55; y++) roomTopology(w).setRoof({ x, y }, true);
+    renderer.draw(w, ui, 0, true);
+    const roofed = canvas.toDataURL();
+    w.weather = 'clear';
+    renderer.draw(w, ui, 0, true);
+    return {
+      visibleRain: rain !== clear,
+      strongerStorm: storm !== rain,
+      unchanged,
+      roofProtected: roofed === canvas.toDataURL(),
+    };
+  });
+  expect(result).toEqual({
+    visibleRain: true,
+    strongerStorm: true,
+    unchanged: true,
+    roofProtected: true,
+  });
+});
+test('mobile inspector updates room and roof status after a structural breach', async ({
+  page,
+}) => {
+  await start(page);
+  await page.evaluate(async () => {
+    const d = (window as any).colonyDebug,
+      w = d.simulation.world;
+    const modulePath = '/src/sim/topology.ts';
+    const { roomTopology } = await import(modulePath);
+    const pawn = w.pawns[0];
+    pawn.x = 40;
+    pawn.y = 40;
+    for (let x = 38; x <= 42; x++)
+      for (let y = 38; y <= 42; y++) {
+        if (x === 38 || x === 42 || y === 38 || y === 42)
+          w.buildings.push({ id: `building-${w.nextId++}`, kind: 'wall', x, y });
+      }
+    roomTopology(w).invalidate('browser fixture');
+    d.ui.selectedId = pawn.id;
+  });
+  await expect(page.locator('.context')).toContainText('Location: Indoors');
+  await expect(page.locator('.context')).toContainText('Roofed: Yes');
+  await page.setViewportSize({ width: 667, height: 375 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(667);
+  await page.screenshot({ path: 'test-results/mobile-room-inspector.png' });
+  await page.evaluate(async () => {
+    const w = (window as any).colonyDebug.simulation.world;
+    w.buildings = w.buildings.filter((b: any) => b.x !== 40 || b.y !== 38);
+    const modulePath = '/src/sim/topology.ts';
+    (await import(modulePath)).roomTopology(w).invalidate('browser breach');
+  });
+  await expect(page.locator('.context')).toContainText('Location: Outdoors');
+  await expect(page.locator('.context')).toContainText('Roofed: No');
+});
 test('landscape play, management, placement, save/reload and narrow resize', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
@@ -197,7 +329,7 @@ test('production diagnostics expose the build and update check', async ({ page }
   await page.goto('http://127.0.0.1:4187/');
   await expect(page.locator('.colonist')).toHaveCount(3);
   await page.getByRole('button', { name: 'More', exact: true }).click();
-  await expect(page.locator('.panel')).toContainText('Hearthfield v0.5.3');
+  await expect(page.locator('.panel')).toContainText('Hearthfield v0.7.0');
   await expect(page.locator('.panel')).toContainText('Build local');
   await page.getByRole('button', { name: 'Check for updates' }).click();
   await expect(page.locator('.toast')).toContainText(/up to date|Could not check/);
@@ -391,6 +523,8 @@ test('a held context action survives changing needs and job status', async ({ pa
   await start(page);
   await page.getByRole('button', { name: 'Select Rowan' }).click();
   const action = page.getByRole('button', { name: /Manage work priorities/ });
+  await action.scrollIntoViewIfNeeded();
+  await expect(action).toBeInViewport();
   const bounds = await action.boundingBox();
   expect(bounds).not.toBeNull();
   await page.mouse.move(bounds!.x + bounds!.width / 2, bounds!.y + bounds!.height / 2);

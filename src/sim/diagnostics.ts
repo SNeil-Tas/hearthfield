@@ -1,3 +1,5 @@
+import { roomTopology } from './topology';
+import { weatherSnapshot, pawnWeatherSnapshot, isRainExposed } from './weather';
 import { DAY_TICKS } from './definitions';
 import type { Building, Item, Pawn, Point, World } from './types';
 import { preparedMealOptions } from './selfcare';
@@ -92,7 +94,9 @@ export function colonistDebugText(
   return [
     `Colonist: ${pawn.name} [${pawn.id}]`,
     `Tile: ${Math.round(pawn.x)},${Math.round(pawn.y)}`,
+    `Environment: ${JSON.stringify(roomTopology(world).environmentAt(pawn))}`,
     `Hunger: ${pawn.hunger.toFixed(1)}`,
+    `Weather exposure: ${JSON.stringify(pawnWeatherSnapshot(world, pawn))}`,
     `Rest: ${pawn.rest.toFixed(1)}`,
     `Mood: ${pawn.mood.toFixed(1)}`,
     `Activity: ${pawn.activity ?? 'none'}`,
@@ -129,12 +133,16 @@ export function buildDebugReport(
       time: `Day ${Math.floor(world.tick / DAY_TICKS) + 1}`,
       speed,
       weather: world.weather,
+      weatherState: weatherSnapshot(world),
       paused: speed === 0,
     },
+    topology: roomTopology(world).summary(),
     colonists: world.pawns.map((pawn) => ({
       id: pawn.id,
       name: pawn.name,
       position: point(pawn),
+      environment: roomTopology(world).environmentAt(pawn),
+      ...pawnWeatherSnapshot(world, pawn),
       hunger: pawn.hunger,
       preparedMeals: preparedMealOptions(world, pawn, reservations).map((option) => ({
         id: option.item.id,
@@ -164,6 +172,8 @@ export function buildDebugReport(
       .filter((b) => b.kind === 'cooking')
       .map((b) => ({
         ...diagnosticBuilding(b, reservations),
+        environment: roomTopology(world).environmentAt(b),
+        rainExposed: isRainExposed(world, b),
         activeJob: world.pawns.find((pawn) => pawn.id === b.reservedBy)?.job ?? null,
         blockedReason: b.reservedBy ? null : 'available',
       })),
@@ -171,6 +181,8 @@ export function buildDebugReport(
       .filter((item) => item.resource === 'food' || item.resource === 'waste')
       .map((item) => ({
         ...diagnosticItem(item, reservations),
+        environment: roomTopology(world).environmentAt(item),
+        rainExposed: isRainExposed(world, item),
         // Carried stacks are removed from world.items. Matching by resource or
         // quantity falsely marked every world food item as carried by the same pawn.
         carriedBy: null,

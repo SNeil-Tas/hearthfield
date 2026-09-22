@@ -1,3 +1,5 @@
+import { roomTopology } from './topology';
+import { rainSpoilageMultiplier } from './weather';
 import {
   TERRAIN,
   BUILDINGS,
@@ -293,7 +295,7 @@ export function usefulResourceTotal(w: World, resource: Resource) {
     );
   return Math.round(total * 1e6) / 1e6;
 }
-export function advanceFoodSpoilage(w: World, item: any, sheltered: Set<number>) {
+export function advanceFoodSpoilage(w: World, item: any, _legacySheltered?: Set<number>) {
   if (item.resource !== 'food' || foodType(item) !== 'raw') return undefined;
   const fresh = freshPoints(item);
   if (fresh <= 1e-6) {
@@ -316,8 +318,8 @@ export function advanceFoodSpoilage(w: World, item: any, sheltered: Set<number>)
     }
     return undefined;
   }
-  const indoor = sheltered.has(tileKey(w, item));
-  const weather = indoor ? 1 : w.weather === 'heavy-rain' ? 1.35 : w.weather === 'rain' ? 1.12 : 1;
+  const indoor = roomTopology(w).isIndoors(item);
+  const weather = rainSpoilageMultiplier(w, item);
   const rate =
     (0.55 / FOOD_LIFETIME.raw) *
     weather *
@@ -331,28 +333,11 @@ export function advanceFoodSpoilage(w: World, item: any, sheltered: Set<number>)
   if (item.quantity <= 1e-6) w.items = w.items.filter((candidate) => candidate.id !== item.id);
   return undefined;
 }
+/** Compatibility helper; new consumers should use O(1) topology queries. */
 export function shelteredTiles(w: World) {
-  const blocked = (p: Point) =>
-    !inside(w, p) || w.buildings.some((b) => sameTile(b, p) && ['wall', 'door'].includes(b.kind));
-  const outside = new Uint8Array(w.width * w.height),
-    queue: Point[] = [];
-  for (let x = 0; x < w.width; x++) queue.push({ x, y: 0 }, { x, y: w.height - 1 });
-  for (let y = 1; y < w.height - 1; y++) queue.push({ x: 0, y }, { x: w.width - 1, y });
-  let head = 0;
-  while (head < queue.length) {
-    const p = queue[head++]!,
-      key = tileKey(w, p);
-    if (outside[key] || blocked(p)) continue;
-    outside[key] = 1;
-    for (const n of [
-      { x: p.x + 1, y: p.y },
-      { x: p.x - 1, y: p.y },
-      { x: p.x, y: p.y + 1 },
-      { x: p.x, y: p.y - 1 },
-    ])
-      if (inside(w, n) && !outside[tileKey(w, n)]) queue.push(n);
-  }
+  const topology = roomTopology(w).ensure();
   const sheltered = new Set<number>();
-  for (let key = 0; key < outside.length; key++) if (!outside[key]) sheltered.add(key);
+  for (let k = 0; k < w.width * w.height; k++)
+    if (topology.isSheltered({ x: k % w.width, y: Math.floor(k / w.width) })) sheltered.add(k);
   return sheltered;
 }

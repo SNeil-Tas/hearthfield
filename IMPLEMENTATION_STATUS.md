@@ -68,7 +68,7 @@
 
 - One grain crop only; no crop catalogue, seasons, nutrition categories, or stockpile filters. Spoilage is age-based rather than temperature-based.
 - Cooking uses one automatic rule and a six-meal target; there is no bill editor, ingredient policy, or workstation queue UI.
-- Shelter is enclosed-tile recognition only. It has no roofs, room quality, temperature, or airflow. Weather is a small outdoor-work modifier only.
+- Shelter has room topology, independent runtime roof state and indoor floor feedback. Weather has seeded Clear/Rain/Heavy rain/Storm periods, exposure-based wetness, drying, mood effects, rain visuals and roof-aware food/field-work hooks. Room quality, temperature, airflow and weather avoidance AI remain deferred. See `docs/weather.md` and `docs/room-topology.md`.
 - Blocked-work explanations cover common construction and cooking shortages in context panels; unreachable-job diagnosis remains intentionally lightweight.
 
 ## Partial systems and known limitations

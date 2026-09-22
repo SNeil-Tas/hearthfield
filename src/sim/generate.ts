@@ -2,16 +2,8 @@ import type { World, NodeKind, Terrain } from './types';
 import { drop, nextId } from './world';
 import { emit } from './events';
 
-export function randomFrom(seed: number) {
-  let s = seed >>> 0;
-  return () => {
-    s += 0x6d2b79f5;
-    let t = s;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
+import { randomFrom } from './random';
+export { randomFrom } from './random';
 export function generateWorld(seed = Date.now() >>> 0): World {
   const random = randomFrom(seed);
   const w: World = {
@@ -32,6 +24,7 @@ export function generateWorld(seed = Date.now() >>> 0): World {
     pawns: [],
     events: [],
     weather: 'clear',
+    weatherStartedAt: 0,
     weatherUntil: 1800,
   };
   for (let y = 0; y < w.height; y++)
@@ -82,6 +75,7 @@ export function generateWorld(seed = Date.now() >>> 0): World {
     carrying: null,
     moodBias: 0,
     productivity: 1,
+    wetness: 0,
   }));
   for (let y = 42; y <= 44; y++) for (let x = 38; x <= 42; x++) w.stockpiles.push(y * w.width + x);
   drop(w, { x: 39, y: 42 }, 'food', 48);

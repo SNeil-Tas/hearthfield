@@ -3,10 +3,16 @@ import { formatResourcePoints } from '../ui/format';
 import type { BuildingKind, Point, World } from '../sim/types';
 import type { UIState } from '../ui/state';
 import { Camera } from './camera';
+import { roomTopology } from '../sim/topology';
+import { precipitationIntensity } from '../sim/weather';
+
+// Warm earth tone signals recognised indoor ground; entities and zones draw above it.
+const INDOOR_FLOOR_COLOR = '#b0a184';
 
 export class Renderer {
   private ctx: CanvasRenderingContext2D;
   private visualPawns = new Map<string, Point>();
+  private rainTime = 0;
   constructor(
     private canvas: HTMLCanvasElement,
     public camera: Camera,
@@ -27,7 +33,8 @@ export class Renderer {
   draw(w: World, ui: UIState, elapsed = 1 / 60, paused = false) {
     const c = this.ctx,
       cam = this.camera,
-      z = cam.zoom;
+      z = cam.zoom,
+      topology = roomTopology(w);
     cam.mapWidth = w.width;
     cam.mapHeight = w.height;
     cam.clamp();
@@ -45,7 +52,7 @@ export class Renderer {
         const p = cam.screen({ x, y }),
           terrain = w.terrain[y * w.width + x]!,
           hash = ((x * 73856093) ^ (y * 19349663) ^ w.seed) >>> 0;
-        c.fillStyle = TERRAIN[terrain].color;
+        c.fillStyle = topology.isIndoors({ x, y }) ? INDOOR_FLOOR_COLOR : TERRAIN[terrain].color;
         c.fillRect(p.x - z / 2, p.y - z / 2, z + 1, z + 1);
         c.fillStyle = hash % 2 ? '#ffffff05' : '#122b1406';
         c.fillRect(p.x - z / 2, p.y - z / 2, z, z);
@@ -67,6 +74,28 @@ export class Renderer {
           c.stroke();
         }
       }
+    // Presentation-only rain, drawn behind entities. No particle state touches World.
+    if (!paused) this.rainTime += Math.max(0, Math.min(elapsed, 0.1));
+    const rain = precipitationIntensity(w);
+    if (rain > 0) {
+      const count = Math.min(80, Math.ceil(((cam.width * cam.height) / 12000) * rain));
+      c.strokeStyle = rain === 1 ? '#dbe8e956' : '#dbe8e973';
+      c.lineWidth = 1;
+      c.beginPath();
+      for (let i = 0; i < count; i++) {
+        const x = ((i * 137.5 + this.rainTime * 25) % (cam.width + 20)) - 10;
+        const y = ((i * 83.7 + this.rainTime * (160 + rain * 30)) % (cam.height + 20)) - 10;
+        const length = 5 + rain * 2;
+        if (
+          topology.isSheltered(cam.world({ x, y })) ||
+          topology.isSheltered(cam.world({ x: x - 2, y: y + length }))
+        )
+          continue;
+        c.moveTo(x, y);
+        c.lineTo(x - 2, y + length);
+      }
+      c.stroke();
+    }
     for (const key of w.stockpiles) {
       const tile = { x: key % w.width, y: Math.floor(key / w.width) };
       if (!visible(tile)) continue;

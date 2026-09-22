@@ -1,3 +1,5 @@
+import { isRoomBoundary, roomTopology } from './topology';
+import { exposedFieldWorkMultiplier } from './weather';
 import { BUILDINGS, NODES, SPOILED_FOOD_LIFETIME, TICK_SECONDS } from './definitions';
 import { emit } from './events';
 import { findPath } from './pathfinding';
@@ -71,7 +73,8 @@ export function advanceJob(
   pawn: Pawn,
   reservations: Reservations,
   grid: Uint8Array,
-  sheltered: Set<number>,
+  // Retained for existing callers; topology is authoritative, never this legacy cache.
+  _legacySheltered?: Set<number>,
   diagnostics?: DiagnosticLog,
 ): boolean {
   const job = pawn.job;
@@ -93,13 +96,9 @@ export function advanceJob(
   const bp = w.blueprints.find((b) => b.id === job.targetId);
   const crop = w.crops.find((c) => c.id === job.targetId);
   const building = w.buildings.find((b) => b.id === job.targetId);
-  const weatherWork =
-    w.weather === 'clear' ||
-    (job.kind !== 'chop' && job.kind !== 'gather' && job.kind !== 'harvest' && job.kind !== 'sow')
-      ? 1
-      : w.weather === 'rain'
-        ? 0.82
-        : 0.65;
+  const weatherWork = ['chop', 'gather', 'harvest', 'sow'].includes(job.kind)
+    ? exposedFieldWorkMultiplier(w, pawn)
+    : 1;
   if (
     (['build', 'deliver'].includes(job.kind) && !bp) ||
     (['chop', 'gather'].includes(job.kind) && !node) ||
@@ -383,6 +382,7 @@ export function advanceJob(
         if (BUILDINGS[bp.kind].blocks && w.pawns.some((p) => sameTile(p, bp))) break;
         w.buildings.push({ id: nextId(w, 'building'), x: bp.x, y: bp.y, kind: bp.kind });
         w.blueprints = w.blueprints.filter((b) => b.id !== bp.id);
+        if (isRoomBoundary(bp.kind)) roomTopology(w).invalidate(`completed ${bp.kind}`);
         emit(w, `${pawn.name} completed a ${BUILDINGS[bp.kind].label.toLowerCase()}.`, 'success');
         finish();
         return true;
@@ -650,6 +650,8 @@ export function advanceJob(
       job.progress += TICK_SECONDS * (1 + pawn.skills.build * 0.06) * (pawn.productivity ?? 1);
       if (job.progress >= BUILDINGS[building.kind].work) {
         w.buildings = w.buildings.filter((b) => b.id !== building.id);
+        if (isRoomBoundary(building.kind))
+          roomTopology(w).invalidate(`demolished ${building.kind}`);
         drop(w, building, 'wood', Math.floor(BUILDINGS[building.kind].cost * 0.6));
         grid[tileKey(w, building)] = 0;
         emit(
@@ -699,7 +701,7 @@ export function advanceJob(
     }
     case 'sleep': {
       const bed = job.targetId ? w.buildings.find((b) => b.id === job.targetId) : undefined;
-      const shelteredBed = !!bed && sheltered.has(tileKey(w, bed));
+      const shelteredBed = !!bed && roomTopology(w).isIndoors(bed);
       if (bed && job.progress === TICK_SECONDS) {
         if (!bed.ownerId) bed.ownerId = pawn.id;
         else if (bed.ownerId !== pawn.id) {
@@ -711,7 +713,7 @@ export function advanceJob(
       const own = !!bed && bed.ownerId === pawn.id;
       pawn.rest = Math.min(
         100,
-        pawn.rest + TICK_SECONDS * (bed ? (own ? 5.2 : shelteredBed ? 4.2 : 3.2) : 1.3),
+        pawn.rest + TICK_SECONDS * (bed ? (own ? 5.2 : 4.2) * (shelteredBed ? 1 : 0.85) : 1.3),
       );
       if (pawn.rest >= 95 || pawn.hunger < 18) finish();
       break;

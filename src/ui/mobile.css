@@ -336,7 +336,6 @@
   .tool-hint {
     font-size: 11px;
   }
-  .world-label > span:last-child,
   .world-divider {
     display: none;
   }

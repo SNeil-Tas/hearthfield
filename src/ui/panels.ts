@@ -1,3 +1,5 @@
+import { roomTopology } from '../sim/topology';
+import { isRainExposed, wetnessBand } from '../sim/weather';
 import { BUILDINGS, DAY_TICKS, JOB_LABELS, NODES, TERRAIN, WORK } from '../sim/definitions';
 import type { World } from '../sim/types';
 import type { Panel, UIState } from './state';
@@ -8,7 +10,6 @@ import {
   spoiledPoints,
   hasAdjacentWaste,
   resourceTotal,
-  shelteredTiles,
   tileKey,
   isFoodSpoiled,
 } from '../sim/world';
@@ -117,7 +118,7 @@ export function contextHTML(w: World, ui: UIState, owner?: string) {
   } else if (b) {
     content = `<span class="eyebrow">COMPLETED BUILDING</span><h3>${BUILDINGS[b.kind].label}</h3><p>${BUILDINGS[b.kind].description}</p>`;
     if (b.kind === 'bed')
-      content += `<p>${shelteredTiles(w).has(tileKey(w, b)) ? 'Sheltered bed · best rest' : 'Outdoor bed · slower rest'}<br>Owner: ${b.ownerId ? esc(w.pawns.find((p) => p.id === b.ownerId)?.name ?? 'unknown') : 'Unclaimed'}</p>`;
+      content += `<p>${roomTopology(w).isIndoors(b) ? 'Indoor bed · full rest recovery' : 'Outdoor/unroofed bed · 15% slower rest'}<br>Owner: ${b.ownerId ? esc(w.pawns.find((p) => p.id === b.ownerId)?.name ?? 'unknown') : 'Unclaimed'}</p>`;
     if (b.kind === 'cooking') {
       const raw = w.items
         .filter((item) => item.resource === 'food' && foodType(item) === 'raw')
@@ -146,6 +147,15 @@ export function contextHTML(w: World, ui: UIState, owner?: string) {
     if (!terrain) return '';
     content = `<span class="eyebrow">${ui.selectedTile.x}, ${ui.selectedTile.y}</span><h3>${TERRAIN[terrain].label}</h3><p>${w.dumpZones.includes(tileKey(w, ui.selectedTile)) ? 'Dump zone · accepts spoiled food and waste' : w.stockpiles.includes(tileKey(w, ui.selectedTile)) ? 'Stockpile · Accepts wood, stone and food' : TERRAIN[terrain].passable ? 'Open ground. A place for something new.' : 'Impassable water.'}</p>`;
   } else return '';
+  const selected = e ?? ui.selectedTile;
+  if (selected) {
+    const env = roomTopology(w).environmentAt(selected);
+    const environment = `<p>Location: ${env.location} / Room: ${env.roomId ?? 'None'}<br>Roofed: ${env.roofed ? 'Yes' : 'No'} / Rain exposure: ${isRainExposed(w, selected) ? 'Yes' : 'No'}</p>`;
+    const wetness = p
+      ? `<p>Wetness: ${wetnessBand(p.wetness)} / ${isRainExposed(w, p) ? 'In rain' : (p.wetness ?? 0) > 0 ? 'Drying' : 'Dry'}</p>`
+      : '';
+    content = content.replace('</h3>', `</h3>${environment}${wetness}`);
+  }
   if (ui.debug && e)
     content += `<code>${esc(e.id)} · ${e.x.toFixed(1)}, ${e.y.toFixed(1)}${owner ? `<br>Reserved: ${esc(owner)}` : ''}</code>`;
   return close + content;

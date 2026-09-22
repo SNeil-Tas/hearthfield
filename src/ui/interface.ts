@@ -1,4 +1,5 @@
 import { DAY_TICKS, JOB_LABELS } from '../sim/definitions';
+import { WEATHER } from '../sim/weather';
 import type { World } from '../sim/types';
 import { resourceTotal, usefulResourceTotal } from '../sim/world';
 import type { Speed } from '../sim/clock';
@@ -98,12 +99,7 @@ export class Interface {
     const hour = (Math.floor(((w.tick % DAY_TICKS) / DAY_TICKS) * 24) + 6) % 24;
     this.el('#day-label').textContent =
       `Day ${Math.floor(w.tick / DAY_TICKS) + 1} · ${String(hour).padStart(2, '0')}:${String(Math.floor(((w.tick % 250) / 250) * 60)).padStart(2, '0')}`;
-    this.el('#weather-label').textContent =
-      w.weather === 'clear'
-        ? 'Clear · outdoor work normal'
-        : w.weather === 'rain'
-          ? 'Rain · outdoor work slower'
-          : 'Heavy rain · outdoor work much slower';
+    this.el('#weather-label').textContent = WEATHER[w.weather].label;
     this.el('.guide').hidden = !ui.guide || !!ui.panel || ui.tool !== 'inspect' || !!ui.selectedId;
     const alert = this.el('.alert');
     alert.textContent =

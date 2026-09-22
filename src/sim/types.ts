@@ -5,7 +5,7 @@ export interface Point {
 export type Terrain = 'soil' | 'fertile' | 'rock' | 'water';
 export type Resource = 'wood' | 'stone' | 'food' | 'waste';
 export type FoodType = 'raw' | 'meal';
-export type WeatherKind = 'clear' | 'rain' | 'heavy-rain';
+export type WeatherKind = 'clear' | 'rain' | 'heavy-rain' | 'storm';
 export type ActivityKind =
   'sleeping' | 'resting' | 'walking' | 'light-work' | 'working' | 'heavy-work' | 'hauling';
 export type BuildingKind = 'wall' | 'door' | 'bed' | 'cooking';
@@ -99,6 +99,7 @@ export interface Pawn extends Point {
   moodBias?: number;
   activity?: ActivityKind;
   productivity?: number;
+  wetness?: number;
   rotExposure?: number;
   rotHandledUntil?: number;
   rotHandledPenalty?: number;
@@ -127,6 +128,7 @@ export interface World {
   events: GameEvent[];
   weather: WeatherKind;
   weatherUntil: number;
+  weatherStartedAt?: number;
 }
 export type Command =
   | { type: 'designate'; points: Point[]; cancel?: boolean }

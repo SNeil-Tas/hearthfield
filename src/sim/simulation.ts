@@ -1,3 +1,5 @@
+import { roomTopology } from './topology';
+import { advanceWeather, updateWetness } from './weather';
 import { applyCommand } from './commands';
 import { assignJob } from './job-assignment';
 import { workCandidates, type Candidate } from './job-board';
@@ -7,14 +9,7 @@ import { navigationGrid } from './pathfinding';
 import { Reservations } from './reservations';
 import type { Command, World } from './types';
 import { BUILDINGS, CROP_GROWTH_TICKS } from './definitions';
-import {
-  advanceFoodSpoilage,
-  advanceWasteDecay,
-  inside,
-  sameTile,
-  shelteredTiles,
-  tileKey,
-} from './world';
+import { advanceFoodSpoilage, advanceWasteDecay, inside, sameTile, tileKey } from './world';
 import { emit } from './events';
 import { DiagnosticLog, point } from './diagnostics';
 import { reachableMeal } from './selfcare';
@@ -25,9 +20,7 @@ export class Simulation {
   private grid: Uint8Array;
   private board: Candidate[] = [];
   private dirty = true;
-  private topologyDirty = true;
   private retries = new Map<string, number>();
-  private sheltered: Set<number>;
   constructor(public world: World) {
     this.reservations = new Reservations((action, key, owner) =>
       this.diagnostics.record(world, `RESERVATION_${action.toUpperCase()}`, {
@@ -37,7 +30,20 @@ export class Simulation {
       }),
     );
     this.grid = navigationGrid(world);
-    this.sheltered = shelteredTiles(world);
+    const topology = roomTopology(world);
+    topology.onRebuild = (state) =>
+      this.diagnostics.record(world, 'ROOM_TOPOLOGY_REBUILT', {
+        reason: state.lastChange.reasons.join(', '),
+        values: {
+          rooms: state.rooms.length,
+          created: state.lastChange.created,
+          removed: state.lastChange.removed,
+          merged: state.lastChange.merged,
+          split: state.lastChange.split,
+          roofedArea: state.rooms.reduce((n, r) => n + r.roofedArea, 0),
+        },
+      });
+    topology.ensure();
     for (const pawn of world.pawns)
       if (pawn.job && !this.reservations.claim(pawn.job.keys, pawn.id))
         interruptJob(
@@ -51,25 +57,17 @@ export class Simulation {
   command(command: Command) {
     const changed = applyCommand(this.world, command, this.reservations);
     this.dirty = true;
-    if (command.type === 'blueprint' || command.type === 'deconstruct') this.topologyDirty = true;
     this.retries.clear();
     return changed;
   }
   step() {
     const w = this.world;
+    roomTopology(w).ensure();
     w.tick++;
-    if (w.tick >= w.weatherUntil) {
-      w.weather = w.weather === 'clear' ? 'rain' : w.weather === 'rain' ? 'heavy-rain' : 'clear';
-      w.weatherUntil = w.tick + (w.weather === 'heavy-rain' ? 900 : 1800);
-      emit(
-        w,
-        `Weather changed to ${w.weather === 'heavy-rain' ? 'heavy rain' : w.weather}.`,
-        'info',
-      );
-    }
+    advanceWeather(w, this.diagnostics);
     if (w.tick % 100 === 0) {
       for (const item of [...w.items]) {
-        const normalized = advanceFoodSpoilage(w, item, this.sheltered);
+        const normalized = advanceFoodSpoilage(w, item);
         if (normalized)
           this.diagnostics.record(w, 'RAW_FOOD_NORMALIZED_TO_WASTE', {
             targetId: normalized.itemId,
@@ -100,10 +98,6 @@ export class Simulation {
       this.grid = navigationGrid(w);
       this.dirty = false;
     }
-    if (this.topologyDirty) {
-      this.sheltered = shelteredTiles(w);
-      this.topologyDirty = false;
-    }
     if (w.tick % 10 === 0)
       for (const crop of w.crops)
         if (crop.growth < 1) crop.growth = Math.min(1, crop.growth + 10 / CROP_GROWTH_TICKS);
@@ -114,6 +108,7 @@ export class Simulation {
       if (w.tick % 10 === 0) {
         const hungerBefore = pawn.hunger;
         const restBefore = pawn.rest;
+        updateWetness(w, pawn, 1, this.diagnostics);
         updateNeeds(w, pawn);
         if (hungerBefore >= 35 && pawn.hunger < 35)
           this.diagnostics.record(w, 'HUNGER_THRESHOLD_CROSSED', {
@@ -201,12 +196,11 @@ export class Simulation {
             keys: [],
           };
       }
-      const jobKind = pawn.job?.kind;
-      if (advanceJob(w, pawn, this.reservations, this.grid, this.sheltered, this.diagnostics)) {
+      if (advanceJob(w, pawn, this.reservations, this.grid, undefined, this.diagnostics)) {
         this.grid = navigationGrid(w);
         this.dirty = true;
-        if (jobKind === 'build' || jobKind === 'deconstruct') this.topologyDirty = true;
       }
     }
+    roomTopology(w).ensure();
   }
 }

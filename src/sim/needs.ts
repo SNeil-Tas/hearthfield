@@ -1,5 +1,6 @@
 import type { Pawn, World, ActivityKind } from './types';
 import { distance } from './world';
+import { wetnessMoodPenalty } from './weather';
 const costs: Record<ActivityKind, [number, number]> = {
   sleeping: [0.22, 0],
   resting: [0.32, 0.05],
@@ -58,6 +59,7 @@ export function updateNeeds(w: World, pawn: Pawn) {
           (pawn.moodBias ?? 0) +
           exposurePenalty +
           handledPenalty +
+          wetnessMoodPenalty(pawn) +
           (ill ? -8 : 0),
       ),
     ),

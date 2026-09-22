@@ -1,3 +1,4 @@
+import { cardinalNeighbours } from './geometry';
 import type { Point, World } from './types';
 import { inside, tileKey } from './world';
 import { BUILDINGS, TERRAIN } from './definitions';
@@ -50,14 +51,7 @@ export function findPath(
 ): Point[] | null {
   const start = { x: Math.round(from.x), y: Math.round(from.y) };
   if (!inside(w, start) || !inside(w, to)) return null;
-  const goals = adjacent
-    ? [
-        { x: to.x - 1, y: to.y },
-        { x: to.x + 1, y: to.y },
-        { x: to.x, y: to.y - 1 },
-        { x: to.x, y: to.y + 1 },
-      ]
-    : [to];
+  const goals = adjacent ? cardinalNeighbours(to) : [to];
   const valid = goals.filter((p) => inside(w, p) && grid[tileKey(w, p)] === 1);
   if (!valid.length) return null;
   const direct = (goal: Point, horizontalFirst: boolean) => {
@@ -108,12 +102,7 @@ export function findPath(
     }
     const x = key % w.width,
       y = Math.floor(key / w.width);
-    for (const p of [
-      { x: x - 1, y },
-      { x: x + 1, y },
-      { x, y: y - 1 },
-      { x, y: y + 1 },
-    ]) {
+    for (const p of cardinalNeighbours({ x, y })) {
       if (!inside(w, p)) continue;
       const k = tileKey(w, p);
       if (!grid[k] || closed[k]) continue;

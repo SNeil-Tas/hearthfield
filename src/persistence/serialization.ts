@@ -21,6 +21,9 @@ export function encode(w: World): SaveEnvelope {
 }
 function migrate(world: any, version: 1 | 2 | 3 | 4 | 5) {
   world.dumpZones ??= [];
+  world.weather ??= 'clear';
+  world.weatherUntil ??= world.tick + 1800;
+  world.weatherStartedAt ??= world.tick;
   if (version === 1) {
     world.crops ??= [];
     world.growingZones ??= [];
@@ -80,6 +83,7 @@ function migrate(world: any, version: 1 | 2 | 3 | 4 | 5) {
   }
   for (const pawn of world.pawns ?? []) {
     pawn.rotExposure ??= 0;
+    pawn.wetness ??= 0;
     pawn.rotHandledPenalty ??= 0;
   }
   return world;
@@ -185,12 +189,14 @@ export function validateWorld(value: unknown): asserts value is World {
   )
     throw new Error('Invalid inventory.');
   if (
-    !['clear', 'rain', 'heavy-rain'].includes(w.weather) ||
-    !integer(w.weatherUntil, w.tick, Number.MAX_SAFE_INTEGER)
+    !['clear', 'rain', 'heavy-rain', 'storm'].includes(w.weather) ||
+    !integer(w.weatherUntil, w.tick, Number.MAX_SAFE_INTEGER) ||
+    (w.weatherStartedAt !== undefined && !integer(w.weatherStartedAt, 0, w.tick))
   )
     throw new Error('Invalid weather.');
   if (w.pawns.length < 1 || w.pawns.length > 50) throw new Error('Invalid colonist count.');
   for (const p of w.pawns) {
+    if (p.wetness !== undefined && !finite(p.wetness, 0, 100)) throw new Error('Invalid wetness.');
     if (typeof p.name !== 'string' || p.name.length > 60 || !/^#[0-9a-f]{6}$/i.test(p.color))
       throw new Error('Invalid colonist identity.');
     if (['health', 'hunger', 'rest', 'mood'].some((k) => !finite(p[k as 'health'], 0, 100)))
