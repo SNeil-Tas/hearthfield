@@ -310,7 +310,7 @@ export function needCandidates(w: World, pawn: Pawn): Candidate[] {
         item.resource === 'food' &&
         (foodType(item) === 'meal' || item.foodKind === 'berries' || pawn.hunger <= 18) &&
         item.quantity > 1e-6 &&
-        !isFoodSpoiled(w, item)
+        (foodType(item) === 'raw' ? freshPoints(item) > 1e-6 : !isFoodSpoiled(w, item))
       )
         candidates.push({
           kind: 'eat',
@@ -318,13 +318,15 @@ export function needCandidates(w: World, pawn: Pawn): Candidate[] {
           destination: item,
           adjacent: true,
           keys: [item.id],
+          personalFoodPlan: true,
           score:
             -1000 +
             distance(pawn, item) +
             (foodType(item) === 'meal' ? -40 : item.foodKind === 'berries' ? -10 : 20),
         });
-  // Food in the wild remains an autonomous fallback when stores are exhausted.
-  if (pawn.hunger < 30 && !w.items.some((i) => i.resource === 'food'))
+  // These are fallback plans: prepared food and feasible cooking rank first.
+  // Mere food-stack presence does not imply an edible, reachable meal.
+  if (pawn.hunger < 30)
     for (const node of w.nodes)
       if (node.kind === 'berries')
         candidates.push({
@@ -334,6 +336,19 @@ export function needCandidates(w: World, pawn: Pawn): Candidate[] {
           adjacent: true,
           keys: [node.id],
           score: -900 + distance(pawn, node),
+          personalFoodPlan: true,
+        });
+  if (pawn.hunger <= 18)
+    for (const crop of w.crops)
+      if (crop.growth >= 1)
+        candidates.push({
+          kind: 'harvest',
+          targetId: crop.id,
+          destination: crop,
+          adjacent: false,
+          keys: [crop.id, `grow:${tileKey(w, crop)}`],
+          score: -850 + distance(pawn, crop),
+          personalFoodPlan: true,
         });
   if (pawn.rest < 28 && pawn.hunger > 12) {
     for (const bed of w.buildings)

@@ -677,19 +677,11 @@ export function advanceJob(
                 nextAction: 'acquire new source',
               },
             });
-          }
           job.waitingForSource = true;
-          if (
-            pawn.hunger < 18 &&
-            w.items.some(
-              (item) =>
-                item.resource === 'food' &&
-                (foodType(item) === 'meal' || item.foodKind === 'berries') &&
-                !isFoodSpoiled(w, item) &&
-                item.quantity > 1e-6,
-            )
-          ) {
-            interruptJob(w, pawn, reservations, diagnostics, 'critical hunger fallback food');
+          // A partial recipe must not imprison a starving cook. Refunding its
+          // buffer makes the existing emergency raw-food path available too.
+          if (pawn.hunger <= 18) {
+            cancel('critical hunger: incomplete recipe has no reachable ingredients');
             return true;
           }
         }
@@ -848,8 +840,33 @@ export function advanceJob(
     }
     case 'eat': {
       const food = w.items.find((i) => i.id === job.sourceId);
-      if (!food || isFoodSpoiled(w, food)) {
-        interruptJob(w, pawn, reservations, diagnostics, 'meal missing or spoiled');
+      if (
+        !food ||
+        (foodType(food) === 'meal' ? isFoodSpoiled(w, food) : freshPoints(food) <= 1e-6)
+      ) {
+        cancel('meal missing or spoiled');
+        break;
+      }
+      // Raw food ages by fresh/spoiled portions. Emergency eating needs the
+      // same physical sorting path as cooking, even below the bulk-work
+      // separation threshold or the recipe's 100-point minimum.
+      if (foodType(food) === 'raw' && spoiledPoints(food) > 0) {
+        job.separationProgress = (job.separationProgress ?? 0) + TICK_SECONDS;
+        if (job.separationProgress < 3) break;
+        const spoiled = spoiledPoints(food);
+        addSpoiledFood(w, food, spoiled, w.tick + SPOILED_FOOD_LIFETIME);
+        food.spoiledPoints = 0;
+        food.spoiled = false;
+        food.quantity = freshPoints(food);
+        job.separationProgress = 0;
+        job.progress = 0;
+        diagnostics?.record(w, 'FOOD_SEPARATED', {
+          entityId: pawn.id,
+          targetId: food.id,
+          jobType: 'eat',
+          reason: 'personal food preparation',
+          values: { fresh: freshPoints(food), spoiled },
+        });
         break;
       }
       if (job.progress >= 2) {

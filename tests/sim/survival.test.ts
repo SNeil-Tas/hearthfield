@@ -47,7 +47,7 @@ describe('survival loop primitives', () => {
   it('releases cooking reservations and returns ingredients when interrupted', () => {
     const w = flatWorld();
     w.buildings.push({ id: nextId(w, 'building'), x: 8, y: 5, kind: 'cooking' });
-    drop(w, { x: 6, y: 5 }, 'food', 4);
+    drop(w, { x: 6, y: 5 }, 'food', 100);
     for (const pawn of w.pawns) pawn.priorities.cook = 1;
     const sim = new Simulation(w);
     for (let i = 0; i < 20; i++) sim.step();
@@ -57,7 +57,7 @@ describe('survival loop primitives', () => {
     expect(sim.reservations.size).toBe(0);
     expect(
       w.items.filter((item) => item.foodType === 'raw').reduce((n, i) => n + i.quantity, 0),
-    ).toBe(4);
+    ).toBe(100);
   });
 
   it('deconstructs a completed building and returns physical material', () => {

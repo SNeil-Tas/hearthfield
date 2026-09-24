@@ -53,7 +53,9 @@ export function assignJob(
     if (attempted.has(identity)) continue;
     attempted.add(identity);
     if (c.work && workAttempts++ >= 2) continue;
-    if (c.kind === 'cook' && pawn.hunger < 38) {
+    // Ordinary cooks need a complete reachable recipe too. Otherwise a small
+    // starting stack can lock both the worker and all food in a partial buffer.
+    if (c.kind === 'cook') {
       if (!feasibleStations.has(c.targetId!)) {
         const station = w.buildings.find((b) => b.id === c.targetId)!;
         const reachableFresh = w.items

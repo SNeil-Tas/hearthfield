@@ -67,7 +67,11 @@ export function updateNeeds(w: World, pawn: Pawn) {
 }
 export function shouldInterrupt(pawn: Pawn) {
   if (!pawn.job) return false;
-  if (pawn.hunger < 20 && !['eat', 'gather', 'cook', 'separate'].includes(pawn.job.kind))
+  if (
+    pawn.hunger < 20 &&
+    !['eat', 'gather', 'cook', 'separate'].includes(pawn.job.kind) &&
+    !(pawn.job.kind === 'harvest' && pawn.job.personalFoodPlan)
+  )
     return true;
   return (
     pawn.rest < 12 &&
