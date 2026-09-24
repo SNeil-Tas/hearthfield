@@ -1,3 +1,4 @@
+import { observeSurvival } from './survival-observer';
 import { expect, it, vi } from 'vitest';
 import { flatWorld } from '../sim/fixtures';
 import { Simulation } from '../../src/sim/simulation';
@@ -45,6 +46,7 @@ it('reconciles physical food at the 35-tile 16-day accounting scale', () => {
     maxHud = 0,
     cooked = 0;
   const sim = new Simulation(w);
+  const observer = observeSurvival(sim, 'A-original');
   const record = sim.diagnostics.record.bind(sim.diagnostics);
   vi.spyOn(sim.diagnostics, 'record').mockImplementation((world, type, data = {}) => {
     if (type === 'CROP_HARVEST') harvested += Number(data.values!.produced);
@@ -64,6 +66,7 @@ it('reconciles physical food at the 35-tile 16-day accounting scale', () => {
         .filter((b) => b.expiresAt <= w.tick + 1)
         .reduce((n, b) => n + b.quantity, 0);
     sim.step();
+    observer.step();
     const mass =
       [...w.items, ...w.pawns.flatMap((p) => (p.carrying ? [p.carrying] : []))].reduce(
         (n, i) =>
@@ -88,6 +91,7 @@ it('reconciles physical food at the 35-tile 16-day accounting scale', () => {
       expect(w.items.every((i) => Number.isFinite(i.quantity) && i.quantity > 0)).toBe(true);
     }
   }
+  observer.finish();
   const expiredMealPoints = w.items
     .filter((i) => i.foodType === 'meal' && isFoodSpoiled(w, i))
     .reduce((n, i) => n + foodPoints(i), 0);
