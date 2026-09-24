@@ -220,7 +220,7 @@ describe('weather persistence and transitions', () => {
     expect(sequence(1)).not.toEqual(sequence(2));
   });
   it.each(['rain', 'storm'] as const)(
-    'schema 5 roundtrip preserves %s, wetness and the next transition',
+    'schema 6 roundtrip preserves %s, wetness and the next transition',
     (kind) => {
       const { w, pawn } = setup(kind);
       w.tick = 320;
@@ -228,7 +228,7 @@ describe('weather persistence and transitions', () => {
       pawn.wetness = 63.25;
       const saved = encode(w),
         loaded = decode(saved).world;
-      expect(saved.version).toBe(5);
+      expect(saved.version).toBe(6);
       expect(weatherSnapshot(loaded)).toEqual(weatherSnapshot(w));
       expect(loaded.pawns[0]!.wetness).toBe(63.25);
       loaded.tick = w.tick = w.weatherUntil;

@@ -1,7 +1,7 @@
 import type { World, NodeKind, Terrain } from './types';
 import { drop, nextId } from './world';
+import { dropSeed } from './agriculture';
 import { emit } from './events';
-
 import { randomFrom } from './random';
 export { randomFrom } from './random';
 export function generateWorld(seed = Date.now() >>> 0): World {
@@ -16,6 +16,7 @@ export function generateWorld(seed = Date.now() >>> 0): World {
     nodes: [],
     crops: [],
     growingZones: [],
+    agriculture: [],
     items: [],
     buildings: [],
     blueprints: [],
@@ -81,6 +82,9 @@ export function generateWorld(seed = Date.now() >>> 0): World {
   drop(w, { x: 39, y: 42 }, 'food', 48);
   drop(w, { x: 41, y: 42 }, 'wood', 18);
   drop(w, { x: 42, y: 43 }, 'stone', 8);
+  dropSeed(w, { x: 38, y: 42 }, 'potato', 20);
+  dropSeed(w, { x: 40, y: 42 }, 'grain', 12);
+  drop(w, { x: 38, y: 43 }, 'fertilizer', 8);
   w.blueprints.push({
     id: nextId(w, 'blueprint'),
     kind: 'bed',

@@ -1,5 +1,6 @@
 import { BUILDINGS, COOKING_INPUT } from './definitions';
 import type { Job, Pawn, Point, WorkType, World } from './types';
+import { agricultureAt, CROPS, nearestWaterAccess, needsWatering, seedItems } from './agriculture';
 import {
   distance,
   tileKey,
@@ -19,6 +20,7 @@ import {
 export interface Candidate {
   kind: Job['kind'];
   sourceId?: string;
+  sourceKind?: 'water';
   targetId?: string;
   destination: Point;
   source?: Point;
@@ -42,30 +44,87 @@ export function workCandidates(w: World): Candidate[] {
         work: 'plants',
         score: 0,
       });
+
+  const dryKeys = new Set<number>();
+  for (const soil of w.agriculture) {
+    const crop = w.crops.find((c) => tileKey(w, c) === soil.key);
+    if (crop && needsWatering(CROPS[crop.kind], soil)) dryKeys.add(soil.key);
+  }
+  const fertilizerSources = w.items.filter(
+    (item) => item.resource === 'fertilizer' && item.quantity >= 1,
+  );
   for (const key of w.growingZones) {
     const tile = { x: key % w.width, y: Math.floor(key / w.width) };
+    const soil = agricultureAt(w, key);
+    if (!soil) continue;
     const crop = w.crops.find((c) => sameTile(c, tile));
-    if (!crop)
-      candidates.push({
-        kind: 'sow',
-        targetId: `zone:${key}`,
-        destination: tile,
-        adjacent: false,
-        keys: [`grow:${key}`],
-        work: 'plants',
-        score: 2,
-      });
-    else if (crop.growth >= 1)
+    if (!crop) {
+      const def = CROPS[soil.cropType];
+      const seed = seedItems(w, soil.cropType).sort(
+        (a, b) => distance(a, tile) - distance(b, tile),
+      )[0];
+      if (seed)
+        candidates.push({
+          kind: 'sow',
+          sourceId: seed.id,
+          targetId: `zone:${key}`,
+          source: seed,
+          destination: tile,
+          adjacent: false,
+          keys: [seed.id, `grow:${key}`],
+          work: 'plants',
+          amount: def.seedCost,
+          score: 2,
+        });
+      continue;
+    }
+    if (crop.growth >= 1)
       candidates.push({
         kind: 'harvest',
         targetId: crop.id,
         destination: crop,
         adjacent: false,
-        keys: [crop.id],
+        keys: [crop.id, `grow:${key}`],
         work: 'plants',
-        score: -2,
+        score: -6,
       });
+    if (soil.nutrients < 18 && fertilizerSources.length) {
+      const fertilizer = [...fertilizerSources].sort(
+        (a, b) => distance(a, tile) - distance(b, tile),
+      )[0]!;
+      candidates.push({
+        kind: 'fertilize',
+        sourceId: fertilizer.id,
+        targetId: `zone:${key}`,
+        source: fertilizer,
+        destination: tile,
+        adjacent: false,
+        keys: [fertilizer.id, `grow:${key}`],
+        work: 'plants',
+        amount: 1,
+        score: -1,
+      });
+    }
+    if (dryKeys.has(key)) {
+      const neighbors = [key - 1, key + 1, key - w.width, key + w.width];
+      if (!neighbors.some((other) => dryKeys.has(other) && other < key)) {
+        const source = nearestWaterAccess(w, tile);
+        if (source)
+          candidates.push({
+            kind: 'water',
+            sourceKind: 'water',
+            targetId: `zone:${key}`,
+            source,
+            destination: tile,
+            adjacent: false,
+            keys: [`water:${tileKey(w, source)}`, `grow:${key}`],
+            work: 'plants',
+            score: -3,
+          });
+      }
+    }
   }
+
   for (const bp of w.blueprints) {
     if (bp.delivered >= BUILDINGS[bp.kind].cost)
       candidates.push({
@@ -92,7 +151,7 @@ export function workCandidates(w: World): Candidate[] {
             score: distance(item, bp) * 0.3,
           });
   }
-  for (const building of w.buildings) {
+  for (const building of w.buildings)
     if (building.deconstructing)
       candidates.push({
         kind: 'deconstruct',
@@ -103,7 +162,7 @@ export function workCandidates(w: World): Candidate[] {
         work: 'build',
         score: 1,
       });
-  }
+
   for (const station of w.buildings.filter((b) => b.kind === 'cooking')) {
     const meals = w.items
       .filter((item) => item.resource === 'food' && foodType(item) === 'meal')
@@ -119,10 +178,9 @@ export function workCandidates(w: World): Candidate[] {
           !station.reservedBy,
       )
       .sort((a, b) => {
-        const score = (item: typeof a) => {
-          const useful = Math.min(freshPoints(item), effectiveCarryCapacity('food'), 100);
-          return distance(item, station) * 0.5 - useful * 2;
-        };
+        const score = (item: typeof a) =>
+          distance(item, station) * 0.5 -
+          Math.min(freshPoints(item), effectiveCarryCapacity('food'), 100) * 2;
         return score(a) - score(b);
       });
     for (const item of sources.slice(0, 1)) {
@@ -140,6 +198,7 @@ export function workCandidates(w: World): Candidate[] {
       });
     }
   }
+
   const stored = new Set(w.stockpiles);
   const dumps = w.dumpZones.map((key) => ({ x: key % w.width, y: Math.floor(key / w.width) }));
   for (const item of w.items)
@@ -181,7 +240,7 @@ export function workCandidates(w: World): Candidate[] {
         })
         .filter(
           ({ room, destination }) =>
-            room > 1e-6 || !w.items.some((item) => sameTile(item, destination)),
+            room > 1e-6 || !w.items.some((candidate) => sameTile(candidate, destination)),
         )
         .sort((a, b) =>
           b.room > a.room ? -1 : distance(a.destination, item) - distance(b.destination, item),
@@ -199,8 +258,6 @@ export function workCandidates(w: World): Candidate[] {
           score: distance(item, destination) * 0.2,
         });
     }
-  // Low-priority stockpile tidy-up. A job is offered only when it removes a
-  // whole source stack and the destination has real capacity.
   const activeSources = new Set(
     w.pawns.flatMap((pawn) => [pawn.job?.sourceId, pawn.job?.targetId]).filter(Boolean),
   );
@@ -244,6 +301,7 @@ export function workCandidates(w: World): Candidate[] {
       });
   return candidates;
 }
+
 export function needCandidates(w: World, pawn: Pawn): Candidate[] {
   const candidates: Candidate[] = [];
   if (pawn.hunger < 38)

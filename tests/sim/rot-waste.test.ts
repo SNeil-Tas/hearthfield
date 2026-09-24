@@ -152,7 +152,7 @@ describe('v0.5 rot and waste systems', () => {
     w.dumpZones.push(tileKey(w, { x: 5, y: 5 }));
     addSpoiledFood(w, { x: 5, y: 5 }, 2.5, 1000);
     const saved = encode(w);
-    expect(saved.version).toBe(5);
+    expect(saved.version).toBe(6);
     const loaded = decode(saved).world;
     expect(loaded.dumpZones).toEqual(w.dumpZones);
     expect(loaded.items.find((item) => item.resource === 'waste')?.quantity).toBe(2.5);

@@ -13,6 +13,8 @@ export const RESOURCES: Record<Resource, { label: string; color: string }> = {
   stone: { label: 'Stone', color: '#b9c2be' },
   food: { label: 'Food', color: '#e2af69' },
   waste: { label: 'Spoiled food', color: '#8f6b58' },
+  seed: { label: 'Seed', color: '#cbbf7c' },
+  fertilizer: { label: 'Fertilizer', color: '#806b4e' },
 };
 export const BUILDINGS: Record<
   BuildingKind,
@@ -56,7 +58,7 @@ export const NODES: Record<
   berries: { label: 'Berry bush', resource: 'food', yield: 14, work: 3 },
 };
 export const WORK: Record<WorkType, string> = {
-  plants: 'Gather',
+  plants: 'Plants',
   build: 'Build',
   haul: 'Haul',
   cook: 'Cook',
@@ -70,15 +72,18 @@ export const JOB_LABELS = {
   eat: 'Finding food',
   sleep: 'Resting',
   move: 'Making room',
-  sow: 'Sowing crops',
+  sow: 'Planting crops',
+  water: 'Watering crops',
+  fertilize: 'Fertilizing soil',
   harvest: 'Harvesting crops',
   cook: 'Cooking meals',
   separate: 'Separating spoiled food',
   deconstruct: 'Taking apart',
 };
-export const CROP_GROWTH_TICKS = 2400;
 export const FOOD_STACK_CAP = 100;
 export const SPOILED_STACK_CAP = 30;
+export const SEED_STACK_CAP = 100;
+export const FERTILIZER_STACK_CAP = 50;
 export const WOOD_CARRY_CAP = 12;
 export const STONE_CARRY_CAP = 12;
 export const RESOURCE_CARRY_CAPACITY = {
@@ -86,9 +91,10 @@ export const RESOURCE_CARRY_CAPACITY = {
   waste: SPOILED_STACK_CAP,
   wood: WOOD_CARRY_CAP,
   stone: STONE_CARRY_CAP,
+  seed: SEED_STACK_CAP,
+  fertilizer: 12,
 } as const;
 export const SPOILED_FOOD_LIFETIME = 5 * 60 * 10;
 export const SPOILAGE_SEPARATION_THRESHOLD = 10;
 export const COOKING_INPUT = 100;
 export const COOKED_MEAL_POINTS = 80;
-export const MATURE_CROP_YIELD = 50;

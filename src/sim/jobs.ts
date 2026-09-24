@@ -1,6 +1,17 @@
 import { isRoomBoundary, roomTopology } from './topology';
 import { exposedFieldWorkMultiplier } from './weather';
 import { BUILDINGS, NODES, SPOILED_FOOD_LIFETIME, TICK_SECONDS } from './definitions';
+import {
+  CROPS,
+  PLANTING_WORK_SECONDS,
+  HARVEST_WORK_SECONDS,
+  WATERING_WORK_SECONDS,
+  FERTILIZING_WORK_SECONDS,
+  applyWatering,
+  applyFertilizer,
+  agricultureAt,
+  dropSeed,
+} from './agriculture';
 import { emit } from './events';
 import { findPath } from './pathfinding';
 import { Reservations } from './reservations';
@@ -8,7 +19,6 @@ import type { Pawn, World } from './types';
 import {
   drop,
   dropFood,
-  dropWaste,
   dropStack,
   addSpoiledFood,
   foodType,
@@ -24,7 +34,7 @@ import {
   validStorageTile,
   depositStack,
 } from './world';
-import { COOKED_MEAL_POINTS, COOKING_INPUT, MATURE_CROP_YIELD } from './definitions';
+import { COOKED_MEAL_POINTS, COOKING_INPUT } from './definitions';
 import { DiagnosticLog, point } from './diagnostics';
 
 export function interruptJob(
@@ -52,14 +62,13 @@ export function interruptJob(
       station.cookingProgress = 0;
     }
     station.reservedBy = undefined;
-    if (pawn.job?.kind === 'cook')
-      diagnostics?.record(w, 'COOKING_STATION_RELEASED', {
-        entityId: pawn.id,
-        entityName: pawn.name,
-        targetId: station.id,
-        jobType: 'cook',
-        reason: 'job interrupted',
-      });
+    diagnostics?.record(w, 'COOKING_STATION_RELEASED', {
+      entityId: pawn.id,
+      entityName: pawn.name,
+      targetId: station.id,
+      jobType: 'cook',
+      reason: 'job interrupted',
+    });
   }
   if (pawn.carrying) {
     dropStack(w, pawn, pawn.carrying);
@@ -70,12 +79,12 @@ export function interruptJob(
   pawn.job = null;
   reservations.release(pawn.id);
 }
+
 export function advanceJob(
   w: World,
   pawn: Pawn,
   reservations: Reservations,
   grid: Uint8Array,
-  // Retained for existing callers; topology is authoritative, never this legacy cache.
   _legacySheltered?: Set<number>,
   diagnostics?: DiagnosticLog,
 ): boolean {
@@ -93,27 +102,30 @@ export function advanceJob(
     pawn.job = null;
     reservations.release(pawn.id);
   };
-  const cancel = () => interruptJob(w, pawn, reservations);
+  const cancel = (reason = 'interrupted') =>
+    interruptJob(w, pawn, reservations, diagnostics, reason);
   const node = w.nodes.find((n) => n.id === job.targetId);
   const bp = w.blueprints.find((b) => b.id === job.targetId);
   const crop = w.crops.find((c) => c.id === job.targetId);
   const building = w.buildings.find((b) => b.id === job.targetId);
-  const weatherWork = ['chop', 'gather', 'harvest', 'sow'].includes(job.kind)
+  const soil = agricultureAt(w, job.destination);
+  const weatherWork = ['chop', 'gather', 'harvest', 'sow', 'water', 'fertilize'].includes(job.kind)
     ? exposedFieldWorkMultiplier(w, pawn)
     : 1;
   if (
     (['build', 'deliver'].includes(job.kind) && !bp) ||
     (['chop', 'gather'].includes(job.kind) && !node) ||
     (job.kind === 'harvest' && !crop) ||
+    (['sow', 'water', 'fertilize'].includes(job.kind) && !soil) ||
     (['cook', 'deconstruct'].includes(job.kind) && !building)
   ) {
-    cancel();
+    cancel('job target missing');
     return false;
   }
   if (job.path.length) {
     const next = job.path[0]!;
     if (!grid[tileKey(w, next)]) {
-      interruptJob(w, pawn, reservations, diagnostics, 'route invalidated by occupancy');
+      cancel('route invalidated by occupancy');
       diagnostics?.record(w, 'PATH_FAILED', {
         entityId: pawn.id,
         entityName: pawn.name,
@@ -150,14 +162,33 @@ export function advanceJob(
       phase: job.phase,
       position: point(pawn),
     });
+
   if (job.phase === 'source') {
+    if (job.kind === 'water' && job.sourceKind === 'water') {
+      const path = findPath(w, pawn, job.destination, false, grid);
+      if (path === null) {
+        cancel('field unreachable after collecting water');
+        return false;
+      }
+      job.waterAmount = 1;
+      job.path = path;
+      job.phase = 'target';
+      diagnostics?.record(w, 'AGRICULTURAL_WATER_ACQUIRED', {
+        entityId: pawn.id,
+        entityName: pawn.name,
+        targetId: job.targetId,
+        jobType: 'water',
+        phase: 'target',
+        position: point(pawn),
+      });
+      return false;
+    }
     const item = w.items.find((i) => i.id === job.sourceId);
     if (!item) {
-      interruptJob(w, pawn, reservations, diagnostics, 'source item missing');
+      cancel('source item missing');
       return false;
     }
     if (job.kind === 'separate') {
-      // Separate at the source; dump hauling moves the resulting physical waste.
       job.destination = { x: item.x, y: item.y };
       job.phase = 'target';
       return false;
@@ -200,7 +231,7 @@ export function advanceJob(
       recipeRemaining,
     );
     if (amount <= 0) {
-      interruptJob(w, pawn, reservations, diagnostics, 'source amount unavailable');
+      cancel('source amount unavailable');
       return false;
     }
     const path = findPath(
@@ -211,7 +242,7 @@ export function advanceJob(
       grid,
     );
     if (path === null) {
-      interruptJob(w, pawn, reservations, diagnostics, 'source unreachable');
+      cancel('source unreachable');
       diagnostics?.record(w, 'PATH_FAILED', {
         entityId: pawn.id,
         entityName: pawn.name,
@@ -225,8 +256,8 @@ export function advanceJob(
     pawn.carrying = {
       resource: item.resource,
       quantity: amount,
-      foodType: foodType(item),
-      foodKind: item.foodKind,
+      ...(item.resource === 'food' ? { foodType: foodType(item), foodKind: item.foodKind } : {}),
+      ...(item.resource === 'seed' ? { seedType: item.seedType } : {}),
       expiryBatches: item.expiryBatches,
       spoilsAt: item.spoilsAt,
       ...(item.resource === 'food' && foodType(item) === 'raw'
@@ -242,6 +273,15 @@ export function advanceJob(
       position: point(pawn),
       values: { quantity: amount, resource: item.resource },
     });
+    if (item.resource === 'seed')
+      diagnostics?.record(w, 'SEED_ACQUIRED', {
+        entityId: pawn.id,
+        entityName: pawn.name,
+        targetId: item.id,
+        jobType: job.kind,
+        position: point(pawn),
+        values: { crop: item.seedType ?? null, quantity: amount },
+      });
     diagnostics?.record(w, 'RESOURCE_PICKUP_AMOUNT', {
       entityId: pawn.id,
       entityName: pawn.name,
@@ -269,9 +309,7 @@ export function advanceJob(
       item.freshPoints = Math.max(0, sourceFresh - amount);
       item.quantity = freshPoints(item) + spoiledPoints(item);
     }
-    if (item.quantity <= 1e-6) {
-      w.items = w.items.filter((i) => i.id !== item.id);
-    }
+    if (item.quantity <= 1e-6) w.items = w.items.filter((i) => i.id !== item.id);
     job.path = path;
     diagnostics?.record(w, 'JOB_PHASE_CHANGED', {
       entityId: pawn.id,
@@ -284,7 +322,10 @@ export function advanceJob(
     job.phase = 'target';
     return false;
   }
+
   job.progress += TICK_SECONDS;
+  const plantWork =
+    job.progress * (1 + pawn.skills.plants * 0.04) * (pawn.productivity ?? 1) * weatherWork;
   switch (job.kind) {
     case 'move':
       finish();
@@ -304,6 +345,17 @@ export function advanceJob(
           'raw',
           node.kind === 'berries' ? 'berries' : 'staple',
         );
+        if (node.kind === 'berries') {
+          dropSeed(w, node, 'berry', 1);
+          diagnostics?.record(w, 'WILD_SEED_ACQUIRED', {
+            entityId: pawn.id,
+            entityName: pawn.name,
+            targetId: node.id,
+            jobType: 'gather',
+            position: point(node),
+            values: { crop: 'berry', quantity: 1 },
+          });
+        }
         w.nodes = w.nodes.filter((n) => n.id !== node.id);
         emit(w, `${pawn.name} gathered ${def.yield} ${def.resource}.`, 'success');
         finish();
@@ -312,40 +364,119 @@ export function advanceJob(
       break;
     }
     case 'sow': {
+      if (plantWork < PLANTING_WORK_SECONDS) break;
       const key = tileKey(w, job.destination);
-      if (w.growingZones.includes(key) && !w.crops.some((c) => sameTile(c, job.destination))) {
-        w.crops.push({
-          id: nextId(w, 'crop'),
-          x: job.destination.x,
-          y: job.destination.y,
-          kind: 'grain',
-          growth: 0,
-        });
-        emit(w, `${pawn.name} sowed a grain crop.`, 'info');
+      const currentSoil = agricultureAt(w, key);
+      const seeds = pawn.carrying;
+      if (
+        !currentSoil ||
+        !w.growingZones.includes(key) ||
+        w.crops.some((c) => sameTile(c, job.destination)) ||
+        seeds?.resource !== 'seed' ||
+        seeds.seedType !== currentSoil.cropType
+      ) {
+        cancel('planting precondition changed');
+        return false;
       }
+      const def = CROPS[currentSoil.cropType];
+      if (seeds.quantity < def.seedCost) {
+        cancel('insufficient seed at planting');
+        return false;
+      }
+      seeds.quantity -= def.seedCost;
+      if (seeds.quantity > 0) dropStack(w, pawn, seeds);
+      pawn.carrying = null;
+      const planted = {
+        id: nextId(w, 'crop'),
+        x: job.destination.x,
+        y: job.destination.y,
+        kind: currentSoil.cropType,
+        growth: 0,
+      } as const;
+      w.crops.push(planted);
+      diagnostics?.record(w, 'PLANTING_COMPLETED', {
+        entityId: pawn.id,
+        entityName: pawn.name,
+        targetId: planted.id,
+        jobType: 'sow',
+        position: point(planted),
+        values: {
+          crop: planted.kind,
+          seedConsumed: def.seedCost,
+          moisture: currentSoil.moisture,
+          nutrients: currentSoil.nutrients,
+        },
+      });
+      emit(w, `${pawn.name} planted ${def.name.toLowerCase()}.`, 'info');
+      finish();
+      return true;
+    }
+    case 'water': {
+      if (plantWork < WATERING_WORK_SECONDS) break;
+      if (!job.waterAmount || !soil) {
+        cancel('water was not collected');
+        return false;
+      }
+      const watered = applyWatering(w, job.destination, diagnostics, pawn.id);
+      diagnostics?.record(w, 'WATERING_COMPLETED', {
+        entityId: pawn.id,
+        entityName: pawn.name,
+        targetId: job.targetId,
+        jobType: 'water',
+        position: point(job.destination),
+        values: { tiles: watered },
+      });
+      finish();
+      return true;
+    }
+    case 'fertilize': {
+      if (plantWork < FERTILIZING_WORK_SECONDS) break;
+      if (!soil || pawn.carrying?.resource !== 'fertilizer' || pawn.carrying.quantity < 1) {
+        cancel('fertilizer unavailable at application');
+        return false;
+      }
+      applyFertilizer(w, job.destination, diagnostics, pawn.id);
+      pawn.carrying.quantity -= 1;
+      if (pawn.carrying.quantity > 0) dropStack(w, pawn, pawn.carrying);
+      pawn.carrying = null;
       finish();
       return true;
     }
     case 'harvest': {
-      if (!crop) break;
-      crop.growth +=
-        (TICK_SECONDS * (1 + pawn.skills.plants * 0.04) * (pawn.productivity ?? 1) * weatherWork) /
-        3;
-      if (crop.growth >= 1.25) {
-        dropFood(w, crop, MATURE_CROP_YIELD, 'raw', 'staple');
-        diagnostics?.record(w, 'CROP_HARVEST', {
-          entityId: pawn.id,
-          targetId: crop.id,
-          jobType: 'harvest',
-          position: point(crop),
-          values: { createdItemId: w.items[w.items.length - 1]!.id, produced: MATURE_CROP_YIELD },
-        });
-        w.crops = w.crops.filter((c) => c.id !== crop.id);
-        emit(w, `${pawn.name} harvested a grain crop.`, 'success');
-        finish();
-        return true;
-      }
-      break;
+      if (!crop || crop.growth < 1 || plantWork < HARVEST_WORK_SECONDS) break;
+      const def = CROPS[crop.kind];
+      dropFood(w, crop, def.foodYield, 'raw', 'staple');
+      const foodId = w.items[w.items.length - 1]?.id;
+      dropSeed(w, crop, crop.kind, def.seedYield);
+      diagnostics?.record(w, 'CROP_HARVEST', {
+        entityId: pawn.id,
+        entityName: pawn.name,
+        targetId: crop.id,
+        jobType: 'harvest',
+        position: point(crop),
+        values: {
+          crop: crop.kind,
+          foodYield: def.foodYield,
+          seedYield: def.seedYield,
+          foodItemId: foodId ?? null,
+          produced: def.foodYield,
+          createdItemId: foodId ?? null,
+        },
+      });
+      diagnostics?.record(w, 'CROP_FOOD_YIELD', {
+        entityId: pawn.id,
+        targetId: crop.id,
+        values: { crop: crop.kind, produced: def.foodYield },
+      });
+      diagnostics?.record(w, 'CROP_SEED_YIELD', {
+        entityId: pawn.id,
+        targetId: crop.id,
+        values: { crop: crop.kind, produced: def.seedYield },
+      });
+      w.crops = w.crops.filter((c) => c.id !== crop.id);
+      emit(w, `${pawn.name} harvested ${def.name.toLowerCase()}.`, 'success');
+      finish();
+      return true;
     }
     case 'haul': {
       if (pawn.carrying) {
@@ -381,7 +512,7 @@ export function advanceJob(
         diagnostics?.record(w, 'ITEM_DROPPED', {
           entityId: pawn.id,
           entityName: pawn.name,
-          targetId: job.destination ? `${job.destination.x},${job.destination.y}` : undefined,
+          targetId: `${job.destination.x},${job.destination.y}`,
           jobType: job.kind,
           position: point(job.destination),
           values: { quantity: pawn.carrying.quantity, resource: pawn.carrying.resource },
@@ -390,7 +521,7 @@ export function advanceJob(
           diagnostics?.record(w, 'SPOILED_FOOD_DROPPED', {
             entityId: pawn.id,
             entityName: pawn.name,
-            targetId: job.destination ? `${job.destination.x},${job.destination.y}` : undefined,
+            targetId: `${job.destination.x},${job.destination.y}`,
             jobType: job.kind,
             position: point(job.destination),
             values: { quantity: pawn.carrying.quantity },
@@ -420,7 +551,6 @@ export function advanceJob(
       if (!bp) break;
       bp.work += TICK_SECONDS * (1 + pawn.skills.build * 0.06) * (pawn.productivity ?? 1);
       if (bp.work >= BUILDINGS[bp.kind].work) {
-        // Never seal a moving colonist into a newly completed wall.
         if (BUILDINGS[bp.kind].blocks && w.pawns.some((p) => sameTile(p, bp))) break;
         w.buildings.push({ id: nextId(w, 'building'), x: bp.x, y: bp.y, kind: bp.kind });
         w.blueprints = w.blueprints.filter((b) => b.id !== bp.id);
@@ -532,7 +662,7 @@ export function advanceJob(
             job.keys = job.keys.filter((key) => key !== previousSourceId);
           }
           job.sourceId = undefined;
-          if (!job.waitingForSource) {
+          if (!job.waitingForSource)
             diagnostics?.record(w, 'COOK_SOURCE_EXHAUSTED', {
               entityId: pawn.id,
               entityName: pawn.name,
@@ -627,7 +757,6 @@ export function advanceJob(
           });
           finish();
           if (job.personalFoodPlan && meal?.foodType === 'meal') {
-            // No scheduler gap: claim this exact output before another pawn runs.
             reservations.claim([meal.id], pawn.id);
             pawn.job = {
               kind: 'eat',
@@ -655,7 +784,7 @@ export function advanceJob(
     case 'separate': {
       const food = w.items.find((i) => i.id === job.sourceId);
       if (!food || food.resource !== 'food') {
-        cancel();
+        cancel('food missing during separation');
         break;
       }
       if (job.progress >= 3) {

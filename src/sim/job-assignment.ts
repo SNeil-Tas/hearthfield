@@ -15,7 +15,6 @@ export function assignJob(
   retries: Map<string, number>,
   diagnostics?: DiagnosticLog,
 ) {
-  // Survival precedence is semantic; numerical work scores only order peers.
   const tier = (c: Candidate) =>
     c.work
       ? 4
@@ -31,7 +30,8 @@ export function assignJob(
     .filter(
       ({ candidate, rank }) =>
         Number.isFinite(rank) &&
-        (!candidate.sourceId ||
+        (candidate.sourceKind === 'water' ||
+          !candidate.sourceId ||
           w.items.some((item) => {
             if (item.id !== candidate.sourceId || item.quantity <= 1e-6) return false;
             if (item.resource !== 'food' || foodType(item) !== 'raw') return true;
@@ -78,13 +78,7 @@ export function assignJob(
       position: point(pawn),
       values: { score: rankCandidate(pawn, c) },
     });
-    const path = findPath(
-      w,
-      pawn,
-      c.source ?? c.destination,
-      c.source ? c.adjacent : c.adjacent,
-      grid,
-    );
+    const path = findPath(w, pawn, c.source ?? c.destination, c.adjacent, grid);
     const onward = c.source ? findPath(w, c.source, c.destination, c.adjacent, grid) : [];
     if (path === null || onward === null) {
       retries.set(`${pawn.id}:${c.keys.join(',')}`, w.tick + 100);
@@ -119,6 +113,7 @@ export function assignJob(
     pawn.job = {
       kind: c.kind,
       sourceId: c.sourceId,
+      sourceKind: c.sourceKind,
       targetId: c.targetId,
       destination: { x: c.destination.x, y: c.destination.y },
       path,

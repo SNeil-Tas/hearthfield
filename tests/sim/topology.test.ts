@@ -354,12 +354,12 @@ describe('topology lifecycle and gameplay', () => {
     expect(t.rebuildCount).toBe(1);
     expect(t.isIndoors(center)).toBe(true);
   });
-  it('reconstructs derived topology and automatic roofs from schema 5 saves', () => {
+  it('reconstructs derived topology and automatic roofs from schema 6 saves', () => {
     const w = flatWorld();
     box(w);
     const before = roomTopology(w).summary();
     const save = encode(w);
-    expect(save.version).toBe(5);
+    expect(save.version).toBe(6);
     expect(save.payload).not.toContain('roof');
     const loaded = decode(save).world;
     new Simulation(loaded);

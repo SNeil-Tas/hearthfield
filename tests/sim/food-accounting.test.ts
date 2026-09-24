@@ -1,3 +1,4 @@
+import { ensureAgricultureTile } from '../../src/sim/agriculture';
 import { describe, expect, it, vi } from 'vitest';
 import { flatWorld } from './fixtures';
 import { advanceJob, interruptJob } from '../../src/sim/jobs';
@@ -6,7 +7,8 @@ import { Simulation } from '../../src/sim/simulation';
 import { navigationGrid } from '../../src/sim/pathfinding';
 import { Reservations } from '../../src/sim/reservations';
 import { decode, encode } from '../../src/persistence/serialization';
-import { COOKING_INPUT, COOKED_MEAL_POINTS, MATURE_CROP_YIELD } from '../../src/sim/definitions';
+import { COOKING_INPUT, COOKED_MEAL_POINTS } from '../../src/sim/definitions';
+import { CROPS } from '../../src/sim/agriculture';
 import type { Job, World, Stack } from '../../src/sim/types';
 import {
   advanceFoodSpoilage,
@@ -52,10 +54,14 @@ describe('physical food accounting', () => {
     expect(usefulResourceTotal(w, 'food')).toBe(0);
     runJob(w, { kind: 'harvest', targetId: crop.id }, 30);
     expect(w.crops).toHaveLength(0);
-    expect(inventory(w)).toBe(MATURE_CROP_YIELD);
+    expect(inventory(w)).toBe(CROPS.grain.foodYield);
     runJob(w, { kind: 'harvest', targetId: crop.id }, 30);
-    expect(inventory(w)).toBe(MATURE_CROP_YIELD);
-    expect(w.items).toHaveLength(1);
+    expect(inventory(w)).toBe(CROPS.grain.foodYield);
+    expect(w.items).toHaveLength(2);
+    expect(w.items.find((item) => item.resource === 'seed')).toMatchObject({
+      seedType: 'grain',
+      quantity: CROPS.grain.seedYield,
+    });
   });
 
   it('rejects crop storage, merging and consolidation even with legacy zone overlap', () => {
@@ -235,7 +241,7 @@ describe('physical food accounting', () => {
     expect(w.items[0]!.quantity).toBe(100);
   });
 
-  it('schema 5 load preserves quantities, releases orphan buffers and removes only overlapping storage designations', () => {
+  it('schema 6 load preserves quantities, releases orphan buffers and removes only overlapping storage designations', () => {
     const w = flatWorld();
     w.stockpiles = [65, 66];
     w.growingZones = [65];
@@ -250,7 +256,7 @@ describe('physical food accounting', () => {
     });
     w.pawns[0]!.carrying = { ...raw(4.75), spoilsAt: 800 };
     const saved = encode(w);
-    expect(saved.version).toBe(5);
+    expect(saved.version).toBe(6);
     const loaded = decode(saved).world;
     expect(inventory(loaded)).toBe(95);
     expect(loaded.stockpiles).toEqual([66]);
@@ -263,15 +269,18 @@ describe('physical food accounting', () => {
     w.dumpZones = [tileKey(w, { x: 10, y: 10 })];
     w.buildings.push({ id: nextId(w, 'building'), x: 8, y: 5, kind: 'cooking' });
     w.stockpiles = [tileKey(w, { x: 7, y: 6 }), tileKey(w, { x: 8, y: 6 })];
-    for (let y = 6; y <= 8; y++)
-      for (let x = 2; x <= 4; x++) {
+    // A 35-tile established field replaces the old nine-tile rapid-growth fixture.
+    w.terrain[11 * w.width + 11] = 'water';
+    for (let y = 5; y <= 11; y++)
+      for (let x = 1; x <= 5; x++) {
         w.growingZones.push(tileKey(w, { x, y }));
         w.crops.push({ id: nextId(w, 'crop'), x, y, kind: 'grain', growth: 1 });
       }
     for (const p of w.pawns) {
       p.priorities = { plants: 2, haul: 3, cook: 1, build: 0 };
-      p.hunger = 70;
+      p.hunger = 25;
     }
+    for (const key of w.growingZones) ensureAgricultureTile(w, key, 'grain');
     const sim = new Simulation(w);
     let harvested = 0,
       consumed = 0,

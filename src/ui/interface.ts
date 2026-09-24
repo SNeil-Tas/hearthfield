@@ -143,7 +143,7 @@ export class Interface {
       cooking: 'Cooking station · Tap to place · 12 wood',
       stockpile: 'Stockpile · Drag an area',
       dump: 'Dump zone · Drag an area',
-      grow: 'Growing zone · Drag fertile ground',
+      grow: 'Growing zone · Drag soil · Potato default',
     };
     const hintText =
       ui.tool === 'inspect'

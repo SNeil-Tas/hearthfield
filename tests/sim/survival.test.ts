@@ -1,3 +1,4 @@
+import { advanceAgriculture, dropSeed } from '../../src/sim/agriculture';
 import { describe, expect, it } from 'vitest';
 import { checksum, decode, encode } from '../../src/persistence/serialization';
 import { Simulation } from '../../src/sim/simulation';
@@ -11,7 +12,17 @@ describe('survival loop primitives', () => {
     const sim = new Simulation(w);
     const tile = { x: 6, y: 6 };
     expect(sim.command({ type: 'growing', points: [tile] })).toBe(1);
-    for (let i = 0; i < 5000; i++) sim.step();
+    dropSeed(w, { x: 3, y: 3 }, 'potato', 1);
+    for (let i = 0; i < 300; i++) sim.step();
+    expect(w.crops).toHaveLength(1);
+    // Accelerate growth in small, maintained-soil steps without changing crop definitions.
+    for (let i = 0; i < 1000 && w.crops[0]!.growth < 1; i++) {
+      w.agriculture[0]!.moisture = 60;
+      w.agriculture[0]!.nutrients = 82;
+      advanceAgriculture(w, 100);
+    }
+    expect(w.crops[0]!.growth).toBe(1);
+    for (let i = 0; i < 300; i++) sim.step();
     expect(w.growingZones).toContain(tileKey(w, tile));
     expect(
       w.items.some(
@@ -107,7 +118,9 @@ describe('survival loop primitives', () => {
   it('keeps a three-colonist food chain active across two simulated days', () => {
     const w = flatWorld();
     w.buildings.push({ id: nextId(w, 'building'), x: 8, y: 5, kind: 'cooking' });
-    drop(w, { x: 6, y: 5 }, 'food', 12);
+    // Starter food bridges the multi-day first crop cycle.
+    drop(w, { x: 6, y: 5 }, 'food', 300);
+    dropSeed(w, { x: 3, y: 3 }, 'potato', 1);
     w.stockpiles.push(tileKey(w, { x: 8, y: 5 }) + 1);
     const sim = new Simulation(w);
     expect(sim.command({ type: 'growing', points: [{ x: 6, y: 6 }] })).toBe(1);

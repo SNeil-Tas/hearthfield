@@ -1,3 +1,4 @@
+import { ensureAgricultureTile } from '../../src/sim/agriculture';
 import { describe, expect, it } from 'vitest';
 import { advanceJob } from '../../src/sim/jobs';
 import { workCandidates } from '../../src/sim/job-board';
@@ -222,13 +223,14 @@ describe('v0.5.2 storage throughput', () => {
       pawn.priorities = { plants: 1, build: 0, haul: 1, cook: 1 };
       pawn.hunger = 70;
     }
+    for (const key of w.growingZones) ensureAgricultureTile(w, key, 'grain');
     const sim = new Simulation(w);
     let cooked = false;
     for (let i = 0; i < 12000; i++) {
       sim.step();
       cooked ||= w.events.some((event) => event.text.includes('prepared a simple meal'));
     }
-    expect(w.events.some((event) => event.text.includes('harvested a grain crop'))).toBe(true);
+    expect(w.events.some((event) => event.text.includes('harvested grain'))).toBe(true);
     expect(cooked).toBe(true);
     expect(
       w.items

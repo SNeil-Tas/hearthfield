@@ -67,6 +67,7 @@ export function diagnosticItem(
     id: item.id,
     tile: point(item),
     resource: item.resource,
+    seedType: item.seedType ?? null,
     foodType: item.foodType,
     freshPoints: item.freshPoints ?? null,
     spoiledPoints: item.spoiledPoints ?? null,
@@ -177,16 +178,21 @@ export function buildDebugReport(
         activeJob: world.pawns.find((pawn) => pawn.id === b.reservedBy)?.job ?? null,
         blockedReason: b.reservedBy ? null : 'available',
       })),
-    items: world.items
-      .filter((item) => item.resource === 'food' || item.resource === 'waste')
-      .map((item) => ({
-        ...diagnosticItem(item, reservations),
-        environment: roomTopology(world).environmentAt(item),
-        rainExposed: isRainExposed(world, item),
-        // Carried stacks are removed from world.items. Matching by resource or
-        // quantity falsely marked every world food item as carried by the same pawn.
-        carriedBy: null,
-      })),
+    agriculture: world.agriculture.map((soil) => ({
+      ...soil,
+      crop:
+        world.crops.find(
+          (crop) => Math.round(crop.y) * world.width + Math.round(crop.x) === soil.key,
+        ) ?? null,
+    })),
+    items: world.items.map((item) => ({
+      ...diagnosticItem(item, reservations),
+      environment: roomTopology(world).environmentAt(item),
+      rainExposed: isRainExposed(world, item),
+      // Carried stacks are removed from world.items. Matching by resource or
+      // quantity falsely marked every world food item as carried by the same pawn.
+      carriedBy: null,
+    })),
     reservations: reservations.snapshot(),
     dumpZones: world.dumpZones,
     recentEvents: log.snapshot(),

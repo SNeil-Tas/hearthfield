@@ -3,7 +3,7 @@ import './ui/mobile.css';
 import { SimulationClock, type Speed } from './sim/clock';
 import { generateWorld } from './sim/generate';
 import { Simulation } from './sim/simulation';
-import type { Point, WorkType } from './sim/types';
+import type { CropType, Point, WorkType } from './sim/types';
 import { inside } from './sim/world';
 import { SaveStore } from './persistence/storage';
 import { acquireWriter } from './persistence/session';
@@ -117,7 +117,7 @@ async function bootstrap() {
   const debugMetadata = () => ({
     appVersion: APP_VERSION,
     buildId: BUILD_ID,
-    saveSchema: 5,
+    saveSchema: 6,
     userAgent: navigator.userAgent,
     viewport: `${window.innerWidth}×${window.innerHeight}`,
     dpr: window.devicePixelRatio || 1,
@@ -225,6 +225,22 @@ async function bootstrap() {
             work: work as WorkType,
             value: (pawn.priorities[work as WorkType] + 1) % 5,
           });
+        break;
+      }
+      case 'crop': {
+        const [keyText, cropType] = value.split(':');
+        const key = Number(keyText);
+        if (Number.isInteger(key) && cropType) {
+          const changed = sim.command({
+            type: 'crop',
+            point: { x: key % sim.world.width, y: Math.floor(key / sim.world.width) },
+            cropType: cropType as CropType,
+          });
+          if (changed) {
+            void save();
+            notify(`Growing zone set to ${cropType}.`);
+          }
+        }
         break;
       }
       case 'dismiss-guide':

@@ -1,6 +1,7 @@
 import { expect, it, vi } from 'vitest';
 import { flatWorld } from '../sim/fixtures';
 import { Simulation } from '../../src/sim/simulation';
+import { ensureAgricultureTile } from '../../src/sim/agriculture';
 import {
   foodPoints,
   isFoodSpoiled,
@@ -9,15 +10,19 @@ import {
   usefulResourceTotal,
 } from '../../src/sim/world';
 
-it('audits the 35-tile 16-day playtest scale', () => {
-  const version = 'fixed';
+// Deliberately synchronized mature crops, no forage or fertilizer: a mass-ledger
+// stress fixture, not an autonomous survival or agriculture-balance benchmark.
+it('reconciles physical food at the 35-tile 16-day accounting scale', () => {
+  const version = 'agriculture-schema-6';
   const w = flatWorld();
   w.width = w.height = 20;
   w.terrain = Array(400).fill('soil');
+  w.terrain[15 * w.width + 7] = 'water';
   w.dumpZones = [tileKey(w, { x: 18, y: 18 })];
   for (let y = 8; y < 15; y++)
     for (let x = 2; x < 7; x++) {
       w.growingZones.push(tileKey(w, { x, y }));
+      ensureAgricultureTile(w, tileKey(w, { x, y }), 'grain');
       w.crops.push({ id: nextId(w, 'crop'), x, y, kind: 'grain', growth: 1 });
     }
   for (let y = 8; y < 11; y++)
@@ -42,7 +47,7 @@ it('audits the 35-tile 16-day playtest scale', () => {
   const sim = new Simulation(w);
   const record = sim.diagnostics.record.bind(sim.diagnostics);
   vi.spyOn(sim.diagnostics, 'record').mockImplementation((world, type, data = {}) => {
-    if (type === 'JOB_COMPLETED' && data.jobType === 'harvest') harvested += 50;
+    if (type === 'CROP_HARVEST') harvested += Number(data.values!.produced);
     if (type === 'FOOD_CONSUMED')
       eaten += data.values?.foodType === 'meal' ? 80 : Number(data.values?.consumedPoints ?? 1);
     if (type === 'COOKING_COMPLETED') {

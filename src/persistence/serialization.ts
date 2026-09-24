@@ -1,12 +1,13 @@
 import { BUILDINGS, NODES, TERRAIN, SPOILED_FOOD_LIFETIME } from '../sim/definitions';
-import type { WeatherKind } from '../sim/types';
+import type { CropType, WeatherKind } from '../sim/types';
 import { Reservations } from '../sim/reservations';
 import { interruptJob } from '../sim/jobs';
+import { CROPS, dropSeed, ensureAgricultureTile, SEED_LIFETIME } from '../sim/agriculture';
 import { dropFood, FOOD_LIFETIME, tileKey } from '../sim/world';
 import type { World } from '../sim/types';
 
 export interface SaveEnvelope {
-  version: 1 | 2 | 3 | 4 | 5;
+  version: 1 | 2 | 3 | 4 | 5 | 6;
   savedAt: number;
   checksum: string;
   payload: string;
@@ -18,9 +19,9 @@ export function checksum(text: string) {
 }
 export function encode(w: World): SaveEnvelope {
   const payload = JSON.stringify(w);
-  return { version: 5, savedAt: Date.now(), checksum: checksum(payload), payload };
+  return { version: 6, savedAt: Date.now(), checksum: checksum(payload), payload };
 }
-function migrate(world: any, version: 1 | 2 | 3 | 4 | 5) {
+function migrate(world: any, version: 1 | 2 | 3 | 4 | 5 | 6) {
   world.dumpZones ??= [];
   world.weather ??= 'clear';
   world.weatherUntil ??= world.tick + 1800;
@@ -45,6 +46,7 @@ function migrate(world: any, version: 1 | 2 | 3 | 4 | 5) {
         item.foodKind ??= 'staple';
       }
     }
+    if (item.resource === 'seed') item.spoilsAt ??= (world.tick ?? 0) + SEED_LIFETIME;
     if (item.resource === 'waste' && !item.expiryBatches)
       item.expiryBatches = [
         { quantity: item.quantity, expiresAt: (world.tick ?? 0) + SPOILED_FOOD_LIFETIME },
@@ -73,10 +75,9 @@ function migrate(world: any, version: 1 | 2 | 3 | 4 | 5) {
   if (version <= 2) {
     world.weather ??= 'clear';
     world.weatherUntil ??= world.tick + 1800;
-    for (const item of world.items ?? []) {
+    for (const item of world.items ?? [])
       if (item.resource === 'food')
         item.spoilsAt ??= world.tick + (item.foodType === 'meal' ? 9000 : 18000);
-    }
     for (const pawn of world.pawns ?? []) {
       pawn.moodBias ??= 0;
       pawn.productivity ??= 1;
@@ -86,6 +87,49 @@ function migrate(world: any, version: 1 | 2 | 3 | 4 | 5) {
     pawn.rotExposure ??= 0;
     pawn.wetness ??= 0;
     pawn.rotHandledPenalty ??= 0;
+  }
+
+  world.agriculture ??= [];
+  world.growingZones ??= [];
+  world.crops ??= [];
+  for (const crop of world.crops) {
+    crop.kind = Object.hasOwn(CROPS, crop.kind) ? crop.kind : 'grain';
+    crop.growth = Math.max(0, Math.min(1, crop.growth ?? 0));
+    delete crop.stallReason;
+  }
+  world.agriculture = world.agriculture.filter((soil: any) =>
+    world.growingZones.includes(soil.key),
+  );
+  for (const key of world.growingZones) {
+    const crop = world.crops.find(
+      (candidate: any) => Math.round(candidate.y) * world.width + Math.round(candidate.x) === key,
+    );
+    const selected = (
+      crop?.kind && Object.hasOwn(CROPS, crop.kind) ? crop.kind : 'potato'
+    ) as CropType;
+    const soil = ensureAgricultureTile(world as World, key, selected);
+    soil.cropType = Object.hasOwn(CROPS, soil.cropType) ? soil.cropType : selected;
+    soil.moisture = Number.isFinite(soil.moisture)
+      ? Math.max(0, Math.min(100, soil.moisture))
+      : world.terrain[key] === 'fertile'
+        ? 68
+        : 60;
+    soil.nutrients = Number.isFinite(soil.nutrients)
+      ? Math.max(0, Math.min(100, soil.nutrients))
+      : world.terrain[key] === 'fertile'
+        ? 95
+        : 82;
+  }
+  if (version <= 5 && !(world.items ?? []).some((item: any) => item.resource === 'seed')) {
+    const key = world.stockpiles?.[0];
+    const fallback = world.pawns?.[0] ?? { x: 0, y: 0 };
+    const location =
+      key === undefined ? fallback : { x: key % world.width, y: Math.floor(key / world.width) };
+    const legacySeeds = Math.max(
+      6,
+      Math.min(18, Math.ceil((world.growingZones.length || 6) * 0.5)),
+    );
+    dropSeed(world as World, location, 'grain', legacySeeds);
   }
   return world;
 }
@@ -109,6 +153,7 @@ export function validateWorld(value: unknown): asserts value is World {
     'nodes',
     'crops',
     'growingZones',
+    'agriculture',
     'items',
     'buildings',
     'blueprints',
@@ -158,12 +203,22 @@ export function validateWorld(value: unknown): asserts value is World {
         !/^crop-\d+$/.test(c.id) ||
         !Number.isInteger(c.x) ||
         !Number.isInteger(c.y) ||
-        c.kind !== 'grain' ||
-        !finite(c.growth, 0, 1.25),
+        !Object.hasOwn(CROPS, c.kind) ||
+        !finite(c.growth, 0, 1),
     ) ||
-    w.growingZones.some((k) => !integer(k, 0, w.width * w.height - 1))
+    w.growingZones.some((k) => !integer(k, 0, w.width * w.height - 1)) ||
+    w.agriculture.some(
+      (soil) =>
+        !integer(soil.key, 0, w.width * w.height - 1) ||
+        !w.growingZones.includes(soil.key) ||
+        !Object.hasOwn(CROPS, soil.cropType) ||
+        !finite(soil.moisture, 0, 100) ||
+        !finite(soil.nutrients, 0, 100),
+    )
   )
     throw new Error('Invalid agriculture.');
+  if (new Set(w.agriculture.map((soil) => soil.key)).size !== w.agriculture.length)
+    throw new Error('Duplicate agriculture tile.');
   for (const b of [...w.buildings, ...w.blueprints])
     if (!Object.hasOwn(BUILDINGS, b.kind)) throw new Error('Invalid building.');
   for (const b of w.blueprints)
@@ -173,16 +228,20 @@ export function validateWorld(value: unknown): asserts value is World {
     resource: string;
     quantity: number;
     foodType?: string;
+    seedType?: string;
     freshPoints?: number;
     spoiledPoints?: number;
+    spoilsAt?: number;
   }) =>
-    ['wood', 'stone', 'food', 'waste'].includes(i.resource) &&
+    ['wood', 'stone', 'food', 'waste', 'seed', 'fertilizer'].includes(i.resource) &&
     ((i.resource === 'food' && i.foodType === 'raw') || i.resource === 'waste'
       ? finite(i.quantity, 0, 100000) && i.quantity > 0
       : integer(i.quantity, 1, 100000)) &&
     (i.resource !== 'food' || !i.foodType || ['raw', 'meal'].includes(i.foodType)) &&
+    (i.resource !== 'seed' || (!!i.seedType && Object.hasOwn(CROPS, i.seedType))) &&
     (i.freshPoints === undefined || finite(i.freshPoints, 0, 100000)) &&
-    (i.spoiledPoints === undefined || finite(i.spoiledPoints, 0, 100000));
+    (i.spoiledPoints === undefined || finite(i.spoiledPoints, 0, 100000)) &&
+    (i.spoilsAt === undefined || integer(i.spoilsAt, 0, Number.MAX_SAFE_INTEGER));
   if (
     w.items.some((i) => !validStack(i)) ||
     w.stockpiles.some((k) => !integer(k, 0, w.width * w.height - 1)) ||
@@ -226,7 +285,7 @@ export function validateWorld(value: unknown): asserts value is World {
 export function decode(raw: unknown): { world: World; savedAt: number } {
   if (!raw || typeof raw !== 'object') throw new Error('Unrecognised save.');
   const e = raw as SaveEnvelope;
-  if (e.version !== 1 && e.version !== 2 && e.version !== 3 && e.version !== 4 && e.version !== 5)
+  if (![1, 2, 3, 4, 5, 6].includes(e.version))
     throw new Error('This save needs a different game version.');
   if (
     typeof e.payload !== 'string' ||
@@ -237,17 +296,13 @@ export function decode(raw: unknown): { world: World; savedAt: number } {
     throw new Error('Save integrity check failed.');
   const world: unknown = migrate(JSON.parse(e.payload), e.version);
   validateWorld(world);
-  // Legacy zone overlap is identifiable; keep crops and physical ground items intact.
   const growing = new Set([...world.growingZones, ...world.crops.map((c) => tileKey(world, c))]);
   world.stockpiles = world.stockpiles.filter((key) => !growing.has(key));
   for (const pawn of world.pawns)
     if (pawn.carrying?.resource === 'food')
       pawn.carrying.spoilsAt ??= world.tick + FOOD_LIFETIME[pawn.carrying.foodType ?? 'raw'];
-  // Jobs are ephemeral. Resume from physical state, releasing all locks and dropping cargo.
-  // This also makes future scheduler migrations independent of the persistent schema.
   const reservations = new Reservations();
   for (const pawn of world.pawns) interruptJob(world, pawn, reservations);
-  // Release orphan buffers too; their physical contents are refunded once.
   for (const station of world.buildings) {
     if (station.kind !== 'cooking') continue;
     if (station.ingredientFresh) dropFood(world, station, station.ingredientFresh);

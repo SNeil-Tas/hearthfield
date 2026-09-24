@@ -5,6 +5,8 @@ import {
   BUILDINGS,
   FOOD_STACK_CAP,
   SPOILED_STACK_CAP,
+  SEED_STACK_CAP,
+  FERTILIZER_STACK_CAP,
   SPOILED_FOOD_LIFETIME,
   SPOILAGE_SEPARATION_THRESHOLD,
   RESOURCE_CARRY_CAPACITY,
@@ -25,6 +27,8 @@ export function effectiveCarryCapacity(resource: Resource, pawnHaulingModifier =
 export function stackCapacity(stack: { resource: Resource; foodType?: FoodType }) {
   if (stack.resource === 'food' && stack.foodType === 'raw') return FOOD_STACK_CAP;
   if (stack.resource === 'waste') return SPOILED_STACK_CAP;
+  if (stack.resource === 'seed') return SEED_STACK_CAP;
+  if (stack.resource === 'fertilizer') return FERTILIZER_STACK_CAP;
   return Number.POSITIVE_INFINITY;
 }
 export const inside = (w: World, p: Point) =>
@@ -91,7 +95,7 @@ export function drop(
     const amount =
       resource === 'food' && type === 'raw'
         ? Math.min(FOOD_STACK_CAP, remaining)
-        : Math.max(1, Math.round(remaining));
+        : Math.min(stackCapacity({ resource, foodType: type }), Math.max(1, Math.round(remaining)));
     w.items.push({
       id: nextId(w, 'item'),
       x: Math.round(p.x),
@@ -112,12 +116,23 @@ export function drop(
   }
 }
 export function compatibleStacks(
-  a: { resource: Resource; foodType?: FoodType; foodKind?: 'berries' | 'staple' },
-  b: { resource: Resource; foodType?: FoodType; foodKind?: 'berries' | 'staple' },
+  a: {
+    resource: Resource;
+    foodType?: FoodType;
+    foodKind?: 'berries' | 'staple';
+    seedType?: string;
+  },
+  b: {
+    resource: Resource;
+    foodType?: FoodType;
+    foodKind?: 'berries' | 'staple';
+    seedType?: string;
+  },
 ) {
   if (a.resource !== b.resource) return false;
   if (a.resource === 'food')
     return foodType(a) === foodType(b) && (a.foodKind ?? 'staple') === (b.foodKind ?? 'staple');
+  if (a.resource === 'seed') return a.seedType === b.seedType;
   return a.resource !== 'waste' || b.resource === 'waste';
 }
 function mergeInto(target: Stack, incoming: Stack, amount: number, w: World) {
@@ -134,8 +149,9 @@ function mergeInto(target: Stack, incoming: Stack, amount: number, w: World) {
   }
   if (target.resource === 'food' && foodType(target) === 'meal')
     target.spoilsAt = Math.min(target.spoilsAt ?? w.tick, incoming.spoilsAt ?? w.tick);
+  if (target.resource === 'seed' && incoming.spoilsAt !== undefined)
+    target.spoilsAt = Math.min(target.spoilsAt ?? incoming.spoilsAt, incoming.spoilsAt);
 }
-/** Crops and growing zones are never storage, including overlapping legacy zones. */
 export function validStorageTile(w: World, p: Point) {
   return (
     w.stockpiles.includes(tileKey(w, p)) &&
@@ -151,6 +167,7 @@ function portionOf(stack: Stack, amount: number): Stack {
     resource: stack.resource,
     foodType: stack.foodType,
     foodKind: stack.foodKind,
+    seedType: stack.seedType,
     spoilsAt: stack.spoilsAt,
     spoiled: stack.spoiled,
     expiryBatches: stack.expiryBatches,
@@ -163,7 +180,6 @@ function portionOf(stack: Stack, amount: number): Stack {
       : {}),
   };
 }
-/** Transfers only accepted inventory; caller retains the returned remainder. */
 export function depositStack(w: World, p: Point, stack: Stack): number {
   if (!validStorageTile(w, p)) return stack.quantity;
   let remaining = stack.quantity;
@@ -241,13 +257,10 @@ export function dropStack(w: World, p: Point, stack: Stack) {
     if (stack.expiryBatches?.length) {
       for (const batch of stack.expiryBatches)
         addSpoiledFood(w, p, batch.quantity, batch.expiresAt);
-    } else {
-      addSpoiledFood(w, p, stack.quantity, w.tick + SPOILED_FOOD_LIFETIME);
-    }
+    } else addSpoiledFood(w, p, stack.quantity, w.tick + SPOILED_FOOD_LIFETIME);
     return;
   }
   const remaining = validStorageTile(w, p) ? depositStack(w, p, stack) : stack.quantity;
-  // Ground drops transfer inventory; they must not rejuvenate food.
   let left = remaining;
   while (left > 1e-6) {
     const amount = Math.min(stackCapacity(stack), left);
@@ -376,7 +389,6 @@ export function advanceFoodSpoilage(
   if (item.quantity <= 1e-6) w.items = w.items.filter((candidate) => candidate.id !== item.id);
   return undefined;
 }
-/** Compatibility helper; new consumers should use O(1) topology queries. */
 export function shelteredTiles(w: World) {
   const topology = roomTopology(w).ensure();
   const sheltered = new Set<number>();

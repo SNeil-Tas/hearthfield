@@ -7,6 +7,7 @@ export function flatWorld(): World {
   w.nodes = [];
   w.crops = [];
   w.growingZones = [];
+  w.agriculture = [];
   w.items = [];
   w.buildings = [];
   w.blueprints = [];

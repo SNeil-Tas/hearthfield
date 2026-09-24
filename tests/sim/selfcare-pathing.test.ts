@@ -1,3 +1,4 @@
+import { ensureAgricultureTile } from '../../src/sim/agriculture';
 import { describe, it, expect } from 'vitest';
 import { flatWorld } from './fixtures';
 import { Simulation } from '../../src/sim/simulation';
@@ -213,9 +214,10 @@ describe('v0.5.3 self-care and traversal', () => {
     w.growingZones.push(tileKey(w, { x: 8, y: 4 }), tileKey(w, { x: 8, y: 5 }));
     w.crops.push({ id: nextId(w, 'crop'), x: 8, y: 5, growth: 1, kind: 'grain' });
     w.pawns[0]!.priorities = { plants: 1, haul: 2, build: 0, cook: 0 };
+    for (const key of w.growingZones) ensureAgricultureTile(w, key, 'grain');
     const sim = new Simulation(w);
     for (let i = 0; i < 600; i++) sim.step();
-    expect(w.events.some((e) => e.text.includes('sowed'))).toBe(true);
+    expect(w.events.some((e) => e.text.includes('planted'))).toBe(true);
     expect(w.events.some((e) => e.text.includes('harvested'))).toBe(true);
     expect(sim.diagnostics.snapshot().filter((e) => e.type === 'PATH_FAILED')).toHaveLength(0);
   });
@@ -283,7 +285,7 @@ describe('v0.5.3 self-care and traversal', () => {
     expect(w.items.some((i) => i.x === 8 && i.y === 8)).toBe(true);
   });
 
-  it('loads dense schema-5 storage in place and rebuilds passable navigation', () => {
+  it('loads dense schema-6 storage in place and rebuilds passable navigation', () => {
     const w = flatWorld();
     for (const [x, y] of [
       [1, 3],
@@ -293,7 +295,7 @@ describe('v0.5.3 self-care and traversal', () => {
     ])
       drop(w, { x: x!, y: y! }, 'wood', 12);
     const saved = encode(w);
-    expect(saved.version).toBe(5);
+    expect(saved.version).toBe(6);
     const loaded = decode(saved).world;
     expect(loaded.items).toEqual(w.items);
     expect(findPath(loaded, loaded.pawns[0]!, { x: 8, y: 3 })).not.toBeNull();

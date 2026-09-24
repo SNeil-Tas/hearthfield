@@ -1,3 +1,4 @@
+import { ensureAgricultureTile, CROPS } from '../../src/sim/agriculture';
 import { it, expect, vi } from 'vitest';
 import { flatWorld } from './fixtures';
 import { Simulation } from '../../src/sim/simulation';
@@ -19,7 +20,7 @@ it('observes three days of dense storage, farming, self-care and waste without i
     }
   for (let x = 11; x <= 14; x++) w.stockpiles.push(tileKey(w, { x, y: 10 }));
   for (let y = 12; y <= 14; y++)
-    for (let x = 12; x <= 14; x++) {
+    for (let x = 12; x <= 17; x++) {
       w.growingZones.push(tileKey(w, { x, y }));
       w.crops.push({ id: nextId(w, 'crop'), kind: 'grain', growth: 1, x, y });
     }
@@ -43,6 +44,7 @@ it('observes three days of dense storage, farming, self-care and waste without i
     delivered: 0,
     work: 0,
   });
+  for (const key of w.growingZones) ensureAgricultureTile(w, key, 'grain');
   const sim = new Simulation(w);
   const metrics = {
     mealsCreated: 0,
@@ -132,7 +134,7 @@ it('observes three days of dense storage, farming, self-care and waste without i
     w.buildings.reduce((sum, b) => sum + (b.ingredientFresh ?? 0), 0);
   const expectedPoints =
     465 +
-    metrics.harvested * 50 -
+    metrics.harvested * CROPS.grain.foodYield -
     metrics.mealsCreated * 20 -
     metrics.consumedPoints -
     metrics.expiredPoints;

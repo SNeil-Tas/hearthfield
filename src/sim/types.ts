@@ -3,7 +3,9 @@ export interface Point {
   y: number;
 }
 export type Terrain = 'soil' | 'fertile' | 'rock' | 'water';
-export type Resource = 'wood' | 'stone' | 'food' | 'waste';
+export type CropType = 'potato' | 'grain' | 'berry';
+export type CropStage = 'seeded' | 'germinating' | 'seedling' | 'growing' | 'mature';
+export type Resource = 'wood' | 'stone' | 'food' | 'waste' | 'seed' | 'fertilizer';
 export type FoodType = 'raw' | 'meal';
 export type WeatherKind = 'clear' | 'rain' | 'heavy-rain' | 'storm';
 export type ActivityKind =
@@ -21,6 +23,8 @@ export type JobKind =
   | 'sleep'
   | 'move'
   | 'sow'
+  | 'water'
+  | 'fertilize'
   | 'harvest'
   | 'cook'
   | 'separate'
@@ -32,6 +36,7 @@ export interface Stack {
   quantity: number;
   foodType?: FoodType;
   foodKind?: 'berries' | 'staple';
+  seedType?: CropType;
   freshPoints?: number;
   spoiledPoints?: number;
   expiryBatches?: ExpiryBatch[];
@@ -54,8 +59,17 @@ export interface ResourceNode extends Point {
 }
 export interface Crop extends Point {
   id: string;
-  kind: 'grain';
+  kind: CropType;
   growth: number;
+  stallReason?: 'dry' | 'wet' | 'nutrients';
+}
+export interface AgricultureTile {
+  key: number;
+  cropType: CropType;
+  moisture: number;
+  nutrients: number;
+  lastWateredAt?: number;
+  lastFertilizedAt?: number;
 }
 export interface Building extends Point {
   id: string;
@@ -73,6 +87,7 @@ export interface Blueprint extends Building {
 export interface Job {
   kind: JobKind;
   sourceId?: string;
+  sourceKind?: 'water';
   targetId?: string;
   destination: Point;
   path: Point[];
@@ -80,6 +95,7 @@ export interface Job {
   progress: number;
   keys: string[];
   amount?: number;
+  waterAmount?: number;
   cookTransactionId?: string;
   waitingForSource?: boolean;
   personalFoodPlan?: boolean;
@@ -121,6 +137,7 @@ export interface World {
   nodes: ResourceNode[];
   crops: Crop[];
   growingZones: number[];
+  agriculture: AgricultureTile[];
   items: Item[];
   buildings: Building[];
   blueprints: Blueprint[];
@@ -138,5 +155,6 @@ export type Command =
   | { type: 'stockpile'; points: Point[] }
   | { type: 'dump'; points: Point[]; cancel?: boolean }
   | { type: 'growing'; points: Point[]; cancel?: boolean }
+  | { type: 'crop'; point: Point; cropType: CropType }
   | { type: 'deconstruct'; points: Point[] }
   | { type: 'priority'; pawnId: string; work: WorkType; value: number };

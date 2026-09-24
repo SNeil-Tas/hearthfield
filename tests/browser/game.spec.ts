@@ -153,8 +153,8 @@ test('landscape play, management, placement, save/reload and narrow resize', asy
     .toBe(2);
   await page.getByRole('button', { name: 'Done' }).click();
   await page.getByRole('button', { name: 'Work', exact: true }).click();
-  await page.getByRole('button', { name: 'Rowan Gather priority 1' }).click();
-  await expect(page.getByRole('button', { name: 'Rowan Gather priority 2' })).toBeVisible();
+  await page.getByRole('button', { name: 'Rowan Plants priority 1' }).click();
+  await expect(page.getByRole('button', { name: 'Rowan Plants priority 2' })).toBeVisible();
   await page.getByRole('button', { name: 'Close panel' }).click();
   await page.evaluate(() => (window as any).colonyDebug.step(1800));
   await expect

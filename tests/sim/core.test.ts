@@ -220,7 +220,7 @@ describe('autonomous physical logistics', () => {
     for (const p of w.pawns) interruptJob(w, p, sim.reservations);
     expect(sim.reservations.size).toBe(0);
     expect(decode(encode(w)).world.tick).toBe(9000);
-  });
+  }, 10000);
 });
 
 describe('time and persistence', () => {

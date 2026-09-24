@@ -8,7 +8,8 @@ import { shouldInterrupt, updateNeeds } from './needs';
 import { navigationGrid } from './pathfinding';
 import { Reservations } from './reservations';
 import type { Command, World } from './types';
-import { BUILDINGS, CROP_GROWTH_TICKS } from './definitions';
+import { BUILDINGS } from './definitions';
+import { advanceAgriculture, advanceSeedSpoilage } from './agriculture';
 import { advanceFoodSpoilage, advanceWasteDecay, inside, sameTile, tileKey } from './world';
 import { emit } from './events';
 import { DiagnosticLog, point } from './diagnostics';
@@ -65,7 +66,9 @@ export class Simulation {
     roomTopology(w).ensure();
     w.tick++;
     advanceWeather(w, this.diagnostics);
+    if (w.tick % 10 === 0) advanceAgriculture(w, 10, this.diagnostics);
     if (w.tick % 100 === 0) {
+      advanceSeedSpoilage(w, this.diagnostics);
       let spoiled = 0;
       let affectedStacks = 0;
       const recordLoss = (amount: number) => {
@@ -109,16 +112,13 @@ export class Simulation {
       this.grid = navigationGrid(w);
       this.dirty = false;
     }
-    if (w.tick % 10 === 0)
-      for (const crop of w.crops)
-        if (crop.growth < 1) crop.growth = Math.min(1, crop.growth + 10 / CROP_GROWTH_TICKS);
     if (w.tick % 100 === 0)
       for (const [key, tick] of this.retries) if (tick <= w.tick) this.retries.delete(key);
     for (let i = 0; i < w.pawns.length; i++) {
       const pawn = w.pawns[i]!;
       if (w.tick % 10 === 0) {
-        const hungerBefore = pawn.hunger;
-        const restBefore = pawn.rest;
+        const hungerBefore = pawn.hunger,
+          restBefore = pawn.rest;
         updateWetness(w, pawn, 1, this.diagnostics);
         updateNeeds(w, pawn);
         if (hungerBefore >= 35 && pawn.hunger < 35)

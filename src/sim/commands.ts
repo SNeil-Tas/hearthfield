@@ -1,8 +1,33 @@
 import { BUILDINGS } from './definitions';
 import { interruptJob } from './jobs';
+import { CROPS, ensureAgricultureTile } from './agriculture';
 import type { Command, World } from './types';
 import { drop, inside, nextId, sameTile, tileKey, walkable } from './world';
 import { Reservations } from './reservations';
+
+function connectedGrowingZone(w: World, origin: number) {
+  const zones = new Set(w.growingZones);
+  if (!zones.has(origin)) return [];
+  const result: number[] = [];
+  const queue = [origin];
+  const seen = new Set<number>();
+  while (queue.length) {
+    const key = queue.shift()!;
+    if (seen.has(key) || !zones.has(key)) continue;
+    seen.add(key);
+    result.push(key);
+    const x = key % w.width;
+    const y = Math.floor(key / w.width);
+    for (const [nx, ny] of [
+      [x - 1, y],
+      [x + 1, y],
+      [x, y - 1],
+      [x, y + 1],
+    ] as const)
+      if (nx >= 0 && ny >= 0 && nx < w.width && ny < w.height) queue.push(ny * w.width + nx);
+  }
+  return result;
+}
 
 export function applyCommand(w: World, command: Command, reservations: Reservations): number {
   if (command.type === 'priority') {
@@ -12,6 +37,19 @@ export function applyCommand(w: World, command: Command, reservations: Reservati
     pawn.priorities[command.work] = command.value;
     if (pawn.job && !['eat', 'sleep'].includes(pawn.job.kind)) interruptJob(w, pawn, reservations);
     return 1;
+  }
+  if (command.type === 'crop') {
+    if (!Object.hasOwn(CROPS, command.cropType) || !inside(w, command.point)) return 0;
+    const origin = tileKey(w, command.point);
+    let changed = 0;
+    for (const key of connectedGrowingZone(w, origin)) {
+      const soil = ensureAgricultureTile(w, key);
+      if (soil.cropType !== command.cropType) {
+        soil.cropType = command.cropType;
+        changed++;
+      }
+    }
+    return changed;
   }
   let changed = 0;
   for (const p of command.points) {
@@ -29,12 +67,16 @@ export function applyCommand(w: World, command: Command, reservations: Reservati
       if (command.cancel) {
         if (w.growingZones.includes(key)) {
           w.growingZones = w.growingZones.filter((k) => k !== key);
+          w.agriculture = w.agriculture.filter((soil) => soil.key !== key);
           const crop = w.crops.find((c) => sameTile(c, p));
           if (crop) w.crops = w.crops.filter((c) => c.id !== crop.id);
+          for (const pawn of w.pawns)
+            if (pawn.job?.keys.includes(`grow:${key}`)) interruptJob(w, pawn, reservations);
           changed++;
         }
       } else if (valid && !w.growingZones.includes(key)) {
         w.growingZones.push(key);
+        ensureAgricultureTile(w, key, 'potato');
         changed++;
       }
     } else if (command.type === 'dump') {
@@ -90,6 +132,7 @@ export function applyCommand(w: World, command: Command, reservations: Reservati
         }
         if (w.growingZones.includes(key)) {
           w.growingZones = w.growingZones.filter((k) => k !== key);
+          w.agriculture = w.agriculture.filter((soil) => soil.key !== key);
           const crop = w.crops.find((c) => sameTile(c, p));
           if (crop) w.crops = w.crops.filter((c) => c.id !== crop.id);
           changed++;
