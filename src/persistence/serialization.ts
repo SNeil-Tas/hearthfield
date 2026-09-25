@@ -7,7 +7,7 @@ import { dropFood, FOOD_LIFETIME, tileKey } from '../sim/world';
 import type { World } from '../sim/types';
 
 export interface SaveEnvelope {
-  version: 1 | 2 | 3 | 4 | 5 | 6;
+  version: 1 | 2 | 3 | 4 | 5 | 6 | 7;
   savedAt: number;
   checksum: string;
   payload: string;
@@ -19,9 +19,9 @@ export function checksum(text: string) {
 }
 export function encode(w: World): SaveEnvelope {
   const payload = JSON.stringify(w);
-  return { version: 6, savedAt: Date.now(), checksum: checksum(payload), payload };
+  return { version: 7, savedAt: Date.now(), checksum: checksum(payload), payload };
 }
-function migrate(world: any, version: 1 | 2 | 3 | 4 | 5 | 6) {
+function migrate(world: any, version: 1 | 2 | 3 | 4 | 5 | 6 | 7) {
   world.dumpZones ??= [];
   world.weather ??= 'clear';
   world.weatherUntil ??= world.tick + 1800;
@@ -87,9 +87,12 @@ function migrate(world: any, version: 1 | 2 | 3 | 4 | 5 | 6) {
     pawn.rotExposure ??= 0;
     pawn.wetness ??= 0;
     pawn.rotHandledPenalty ??= 0;
+    pawn.knowledge ??= {};
+    pawn.knowledge.agriculture ??= 8;
   }
 
   world.agriculture ??= [];
+  world.waterSalinity ??= [];
   world.growingZones ??= [];
   world.crops ??= [];
   for (const crop of world.crops) {
@@ -97,9 +100,10 @@ function migrate(world: any, version: 1 | 2 | 3 | 4 | 5 | 6) {
     crop.growth = Math.max(0, Math.min(1, crop.growth ?? 0));
     delete crop.stallReason;
   }
-  world.agriculture = world.agriculture.filter((soil: any) =>
-    world.growingZones.includes(soil.key),
-  );
+  if (version <= 6)
+    world.agriculture = world.agriculture.filter((soil: any) =>
+      world.growingZones.includes(soil.key),
+    );
   for (const key of world.growingZones) {
     const crop = world.crops.find(
       (candidate: any) => Math.round(candidate.y) * world.width + Math.round(candidate.x) === key,
@@ -119,6 +123,7 @@ function migrate(world: any, version: 1 | 2 | 3 | 4 | 5 | 6) {
       : world.terrain[key] === 'fertile'
         ? 95
         : 82;
+    soil.salinity = Number.isFinite(soil.salinity) ? Math.max(0, Math.min(100, soil.salinity)) : 0;
   }
   if (version <= 5 && !(world.items ?? []).some((item: any) => item.resource === 'seed')) {
     const key = world.stockpiles?.[0];
@@ -154,6 +159,7 @@ export function validateWorld(value: unknown): asserts value is World {
     'crops',
     'growingZones',
     'agriculture',
+    'waterSalinity',
     'items',
     'buildings',
     'blueprints',
@@ -210,15 +216,26 @@ export function validateWorld(value: unknown): asserts value is World {
     w.agriculture.some(
       (soil) =>
         !integer(soil.key, 0, w.width * w.height - 1) ||
-        !w.growingZones.includes(soil.key) ||
         !Object.hasOwn(CROPS, soil.cropType) ||
         !finite(soil.moisture, 0, 100) ||
-        !finite(soil.nutrients, 0, 100),
+        !finite(soil.nutrients, 0, 100) ||
+        !finite(soil.salinity, 0, 100),
     )
   )
     throw new Error('Invalid agriculture.');
   if (new Set(w.agriculture.map((soil) => soil.key)).size !== w.agriculture.length)
     throw new Error('Duplicate agriculture tile.');
+  if (
+    w.waterSalinity.some(
+      (entry) =>
+        !integer(entry.key, 0, w.width * w.height - 1) ||
+        w.terrain[entry.key] !== 'water' ||
+        !finite(entry.salinity, 0, 100) ||
+        entry.salinity === 0,
+    ) ||
+    new Set(w.waterSalinity.map((entry) => entry.key)).size !== w.waterSalinity.length
+  )
+    throw new Error('Invalid water salinity.');
   for (const b of [...w.buildings, ...w.blueprints])
     if (!Object.hasOwn(BUILDINGS, b.kind)) throw new Error('Invalid building.');
   for (const b of w.blueprints)
@@ -269,6 +286,8 @@ export function validateWorld(value: unknown): asserts value is World {
         !integer(p.priorities[type], 0, 4)
       )
         throw new Error('Invalid work profile.');
+    if (!p.knowledge || !integer(p.knowledge.agriculture, 0, 20))
+      throw new Error('Invalid knowledge profile.');
     if (p.carrying !== null && (!p.carrying || !validStack(p.carrying)))
       throw new Error('Invalid carried item.');
   }
@@ -285,7 +304,7 @@ export function validateWorld(value: unknown): asserts value is World {
 export function decode(raw: unknown): { world: World; savedAt: number } {
   if (!raw || typeof raw !== 'object') throw new Error('Unrecognised save.');
   const e = raw as SaveEnvelope;
-  if (![1, 2, 3, 4, 5, 6].includes(e.version))
+  if (![1, 2, 3, 4, 5, 6, 7].includes(e.version))
     throw new Error('This save needs a different game version.');
   if (
     typeof e.payload !== 'string' ||

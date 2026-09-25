@@ -4,6 +4,8 @@ A phone-first browser colony simulation. Three autonomous settlers gather resour
 
 The original [GDD](mobile_colony_sim_gdd_v0.1.md) remains authoritative. This implementation focuses on the first playable logistics loop. All visuals are original Canvas shapes and SVG icons. There are no external fonts, art downloads, runtime frameworks, accounts, or services.
 
+In v0.9, Agriculture Knowledge is separate from Plants skill. Colonists deterministically judge fresh, ambiguous brackish, and obvious saltwater irrigation sources; the selected water's objective salinity persists in soil and affects crop growth through the ordinary agriculture model.
+
 ![Landscape prototype](docs/mobile-colony.png)
 
 ## Run locally

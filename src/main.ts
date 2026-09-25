@@ -117,7 +117,7 @@ async function bootstrap() {
   const debugMetadata = () => ({
     appVersion: APP_VERSION,
     buildId: BUILD_ID,
-    saveSchema: 6,
+    saveSchema: 7,
     userAgent: navigator.userAgent,
     viewport: `${window.innerWidth}×${window.innerHeight}`,
     dpr: window.devicePixelRatio || 1,

@@ -30,6 +30,8 @@
 26. **Spatial storage and spoilage.** Stockpile cells remain ordinary map cells with a 48-unit aggregate capacity. Raw food lasts three simulated days; cooked meals last 1.5 days. Spoiled stacks remain visible but are not edible or cooking ingredients.
 27. **Weather, illness and beds.** Clear/rain/heavy rain rotate on simulation time and rain affects outdoor plant work. Mild illness lasts 90 simulated seconds and recovers naturally. The first user of an unclaimed bed claims it; own beds recover rest faster, while borrowing applies small mood penalties to sleeper and owner.
 28. **Save migration v3.** New saves use envelope v3. v1/v2 loads default weather to clear, initialize conservative food expiry, add neutral mood/productivity fields, and leave beds unclaimed/colonists healthy. Jobs remain ephemeral.
+
+29. **Knowledge judges irrigation sources; it does not gate work.** Agriculture Knowledge is separate from Plants skill and only changes deterministic perception of ambiguous water salinity. Water and soil salinity are abstract 0–100 state. Objective source salinity is carried by watering jobs, persists in soil, and affects crop suitability. Freshwater is accepted and obvious saltwater rejected at every Knowledge level. Save schema 7 defaults legacy water and soil to fresh/clean.
 # v0.4 food pressure decisions
 
 - Raw food uses a single physical stack with fresh and spoiled point quantities; total quantity remains visible until separation.

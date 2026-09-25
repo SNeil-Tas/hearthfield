@@ -359,7 +359,7 @@ describe('topology lifecycle and gameplay', () => {
     box(w);
     const before = roomTopology(w).summary();
     const save = encode(w);
-    expect(save.version).toBe(6);
+    expect(save.version).toBe(7);
     expect(save.payload).not.toContain('roof');
     const loaded = decode(save).world;
     new Simulation(loaded);

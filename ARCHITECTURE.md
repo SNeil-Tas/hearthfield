@@ -43,6 +43,8 @@ Generation uses an explicit seed and a small deterministic PRNG. Subsequent simu
 
 Priorities range from 1–4; zero disables a work type. The score combines priority, Manhattan distance, skill and delivery distance. Eating, exhaustion and emergency foraging are higher than normal work, regardless of disabled work preferences. Skills currently affect gathering/build speed and candidate rank; they do not improve through use.
 
+Agriculture Knowledge is persistent and separate from Plants skill. The shared board exposes one watering need with derived source alternatives; assignment resolves that need per pawn using deterministic perceived salinity. Freshwater is common knowledge, obvious saltwater is rejected by everyone, and ambiguous brackish water may be underestimated by novices. The selected source's objective salinity travels through the job into persistent soil salinity. Crop growth responds only to soil state, never directly to Knowledge.
+
 A job has a kind, reserved keys, source/target IDs, destination, cached path, phase and progress. The lifecycle is:
 
 1. Generate available work from designations, blueprints and loose items.
@@ -76,7 +78,7 @@ DOM panels use safe-area insets and 44 px action targets. Work/settings/journal 
 
 ## Persistence and migration
 
-Save envelope version **3** contains a millisecond timestamp, JSON payload and FNV integrity checksum. The checksum detects accidental corruption; it is not an authentication mechanism. World validation rejects unknown definitions, invalid quantities/coordinates/needs, duplicate identities and invalid ID sequences before state reaches gameplay.
+Save envelope version **7** contains a millisecond timestamp, JSON payload and FNV integrity checksum. The checksum detects accidental corruption; it is not an authentication mechanism. World validation rejects unknown definitions, invalid quantities/coordinates/needs, duplicate identities and invalid ID sequences before state reaches gameplay.
 
 IndexedDB database `hearthfield`, schema 1, contains `saves/latest` and `saves/backup`. Both writes occur in one transaction; queued snapshots preserve local write ordering. Page hide also writes a best-effort synchronous recovery envelope to localStorage. Resume validates all candidates and picks the newest valid timestamp. Complete read failure never silently overwrites the original data.
 
@@ -100,7 +102,7 @@ Rooms and roofs are derived runtime state owned by `roomTopology(world)`. Comple
 
 Weather/exposure is centralised in `src/sim/weather.ts`: seeded weighted Clear/Rain/Heavy rain/Storm periods, roof-authoritative rain exposure, and persistent pawn wetness updated once per second. Existing rain food/field-work effects use its queries; wetness contributes a small mood effect. See [weather](docs/weather.md) for rates, transitions, save defaults and limits.
 
-Save envelopes are version 5. Loading version 1/2/3/4 adds safe agriculture, weather, food-expiry, mood/productivity, food-point, Dump-zone and neutral ownership defaults before normal validation. Missing wetness defaults to dry and missing weather start time defaults to load tick, including older schema 5 saves. Job state remains ephemeral across loading, so reservations and carried ingredients are reconstructed safely.
+Save envelopes are version 7. Loading versions 1–6 adds safe agriculture, weather, food-expiry, mood/productivity, food-point, Dump-zone, Knowledge, freshwater and clean-soil defaults before normal validation. Missing wetness defaults to dry and missing weather start time defaults to load tick. Job state remains ephemeral across loading, so reservations and carried ingredients are reconstructed safely.
 
 Raw food items retain a physical stack with fractional `freshPoints` and `spoiledPoints`; meals remain whole items worth 80 points. Cooking stations own a transient `ingredientFresh` buffer and `cookingProgress` while reserved by one pawn. Interrupted cooking refunds buffered fresh points as physical food. More than 10 spoiled points are separated into expiry-tracked physical `waste` items capped at 30, traversable like other resources. Dump zones are persistent tile designations. Spoilage uses indoor shelter, exposed weather, and a bounded 8-neighbour waste-contamination multiplier.
 

@@ -33,6 +33,8 @@ describe('runtime diagnostics', () => {
     expect(JSON.stringify(world)).toBe(before);
     expect(report.build).toEqual({ appVersion: '0.4.1' });
     expect(report.colonists).toHaveLength(world.pawns.length);
+    expect(report.colonists[0]!.skills.plants).toBe(world.pawns[0]!.skills.plants);
+    expect(report.colonists[0]!.knowledge.agriculture).toBe(world.pawns[0]!.knowledge.agriculture);
     expect(report.recentEvents.at(-1)?.type).toBe('USER_MARKER');
   });
 
@@ -54,5 +56,7 @@ describe('runtime diagnostics', () => {
     expect(text).toContain('Job: cook');
     expect(text).toContain('Phase: target');
     expect(text).toContain('Reservations: building-17');
+    expect(text).toContain('Plants skill:');
+    expect(text).toContain('Agriculture knowledge:');
   });
 });

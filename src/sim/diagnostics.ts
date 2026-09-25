@@ -3,6 +3,7 @@ import { weatherSnapshot, pawnWeatherSnapshot, isRainExposed } from './weather';
 import { DAY_TICKS } from './definitions';
 import type { Building, Item, Pawn, Point, World } from './types';
 import { preparedMealOptions } from './selfcare';
+import { CROPS, growthSuitability, irrigationSources } from './agriculture';
 
 export const DIAGNOSTIC_CAPACITY = 5000;
 
@@ -100,6 +101,8 @@ export function colonistDebugText(
     `Weather exposure: ${JSON.stringify(pawnWeatherSnapshot(world, pawn))}`,
     `Rest: ${pawn.rest.toFixed(1)}`,
     `Mood: ${pawn.mood.toFixed(1)}`,
+    `Plants skill: ${pawn.skills.plants}`,
+    `Agriculture knowledge: ${pawn.knowledge.agriculture}`,
     `Activity: ${pawn.activity ?? 'none'}`,
     `Job: ${pawn.job?.kind ?? 'none'}`,
     `Phase: ${pawn.job?.phase ?? 'none'}`,
@@ -125,7 +128,7 @@ export function buildDebugReport(
 ) {
   return {
     report: 'hearthfield-debug',
-    reportVersion: 1,
+    reportVersion: 2,
     exportedAt: new Date().toISOString(),
     build: metadata,
     simulation: {
@@ -156,6 +159,9 @@ export function buildDebugReport(
       rest: pawn.rest,
       mood: pawn.mood,
       health: pawn.health,
+      skills: pawn.skills,
+      priorities: pawn.priorities,
+      knowledge: pawn.knowledge,
       illness:
         pawn.illnessUntil && pawn.illnessUntil > world.tick ? { until: pawn.illnessUntil } : null,
       activity: pawn.activity ?? null,
@@ -178,13 +184,22 @@ export function buildDebugReport(
         activeJob: world.pawns.find((pawn) => pawn.id === b.reservedBy)?.job ?? null,
         blockedReason: b.reservedBy ? null : 'available',
       })),
-    agriculture: world.agriculture.map((soil) => ({
-      ...soil,
-      crop:
-        world.crops.find(
-          (crop) => Math.round(crop.y) * world.width + Math.round(crop.x) === soil.key,
-        ) ?? null,
+    irrigationSources: irrigationSources(world).map((source) => ({
+      id: source.id,
+      sourceClass: source.sourceClass,
+      salinity: source.salinity,
+      accessPoints: source.accessPoints,
     })),
+    agriculture: world.agriculture.map((soil) => {
+      const crop = world.crops.find(
+        (candidate) => Math.round(candidate.y) * world.width + Math.round(candidate.x) === soil.key,
+      );
+      return {
+        ...soil,
+        crop: crop ?? null,
+        suitability: crop ? growthSuitability(CROPS[crop.kind], soil) : null,
+      };
+    }),
     items: world.items.map((item) => ({
       ...diagnosticItem(item, reservations),
       environment: roomTopology(world).environmentAt(item),

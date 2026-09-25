@@ -295,7 +295,7 @@ describe('v0.5.3 self-care and traversal', () => {
     ])
       drop(w, { x: x!, y: y! }, 'wood', 12);
     const saved = encode(w);
-    expect(saved.version).toBe(6);
+    expect(saved.version).toBe(7);
     const loaded = decode(saved).world;
     expect(loaded.items).toEqual(w.items);
     expect(findPath(loaded, loaded.pawns[0]!, { x: 8, y: 3 })).not.toBeNull();

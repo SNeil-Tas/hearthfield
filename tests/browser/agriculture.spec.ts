@@ -7,6 +7,21 @@ test('mobile agriculture inspector, crop choice and physical starting supplies',
   await expect(page.locator('.colonist')).toHaveCount(3);
   await page.getByRole('button', { name: 'Dismiss getting started' }).click();
   await page.getByRole('button', { name: 'Pause simulation' }).click();
+  await page.evaluate(() => {
+    const d = (window as any).colonyDebug;
+    d.ui.selectedId = d.simulation.world.pawns[0].id;
+    d.step(0);
+  });
+  await expect(page.locator('.context')).toContainText('Agriculture knowledge:');
+  await page.evaluate(() => {
+    const d = (window as any).colonyDebug,
+      w = d.simulation.world,
+      water = w.waterSalinity.find((entry: any) => entry.salinity === 32);
+    d.ui.selectedId = undefined;
+    d.ui.selectedTile = { x: water.key % w.width, y: Math.floor(water.key / w.width) };
+    d.step(0);
+  });
+  await expect(page.locator('.context')).toContainText('brackish irrigation source');
   for (const [resource, species, label] of [
     ['seed', 'potato', '20 Potato seed'],
     ['seed', 'grain', '12 Grain seed'],
@@ -62,6 +77,7 @@ test('mobile agriculture inspector, crop choice and physical starting supplies',
     'Growth:',
     'Moisture:',
     'Nutrients:',
+    'Soil salinity:',
     'Temperature: Not simulated / Suitable',
     'Status:',
   ])

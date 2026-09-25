@@ -10,6 +10,8 @@ import {
   applyWatering,
   applyFertilizer,
   agricultureAt,
+  waterSalinityAt,
+  waterSourceClass,
   dropSeed,
 } from './agriculture';
 import { emit } from './events';
@@ -165,12 +167,18 @@ export function advanceJob(
 
   if (job.phase === 'source') {
     if (job.kind === 'water' && job.sourceKind === 'water') {
+      if (job.waterSourceKey === undefined || w.terrain[job.waterSourceKey] !== 'water') {
+        cancel('irrigation source missing');
+        return false;
+      }
       const path = findPath(w, pawn, job.destination, false, grid);
       if (path === null) {
         cancel('field unreachable after collecting water');
         return false;
       }
       job.waterAmount = 1;
+      job.waterSalinity = waterSalinityAt(w, job.waterSourceKey);
+      job.waterSourceClass = waterSourceClass(job.waterSalinity);
       job.path = path;
       job.phase = 'target';
       diagnostics?.record(w, 'AGRICULTURAL_WATER_ACQUIRED', {
@@ -180,6 +188,13 @@ export function advanceJob(
         jobType: 'water',
         phase: 'target',
         position: point(pawn),
+        values: {
+          plantsSkill: pawn.skills.plants,
+          agricultureKnowledge: pawn.knowledge.agriculture,
+          sourceKey: job.waterSourceKey,
+          sourceClass: job.waterSourceClass,
+          waterSalinity: job.waterSalinity,
+        },
       });
       return false;
     }
@@ -417,14 +432,27 @@ export function advanceJob(
         cancel('water was not collected');
         return false;
       }
-      const watered = applyWatering(w, job.destination, diagnostics, pawn.id);
+      const salinityBefore = soil.salinity;
+      const watered = applyWatering(
+        w,
+        job.destination,
+        job.waterSalinity ?? 0,
+        diagnostics,
+        pawn.id,
+      );
       diagnostics?.record(w, 'WATERING_COMPLETED', {
         entityId: pawn.id,
         entityName: pawn.name,
         targetId: job.targetId,
         jobType: 'water',
         position: point(job.destination),
-        values: { tiles: watered },
+        values: {
+          tiles: watered,
+          waterSalinity: job.waterSalinity ?? 0,
+          sourceClass: job.waterSourceClass ?? 'fresh',
+          soilSalinityBefore: salinityBefore,
+          soilSalinityAfter: soil.salinity,
+        },
       });
       finish();
       return true;

@@ -1,6 +1,6 @@
 import type { World, NodeKind, Terrain } from './types';
 import { drop, nextId } from './world';
-import { dropSeed } from './agriculture';
+import { BRACKISH_WATER_SALINITY, SALTWATER_SALINITY, dropSeed } from './agriculture';
 import { emit } from './events';
 import { randomFrom } from './random';
 export { randomFrom } from './random';
@@ -17,6 +17,7 @@ export function generateWorld(seed = Date.now() >>> 0): World {
     crops: [],
     growingZones: [],
     agriculture: [],
+    waterSalinity: [],
     items: [],
     buildings: [],
     blueprints: [],
@@ -36,6 +37,11 @@ export function generateWorld(seed = Date.now() >>> 0): World {
       const terrain: Terrain =
         !clearing && river ? 'water' : patch > 1 ? 'fertile' : patch < -1.35 ? 'rock' : 'soil';
       w.terrain.push(terrain);
+      if (terrain === 'water' && y >= 52)
+        w.waterSalinity.push({
+          key: y * w.width + x,
+          salinity: y >= 63 ? SALTWATER_SALINITY : BRACKISH_WATER_SALINITY,
+        });
       if (!clearing && terrain !== 'water' && random() < 0.115) {
         const kind: NodeKind = terrain === 'rock' ? 'stone' : random() < 0.18 ? 'berries' : 'tree';
         w.nodes.push({ id: nextId(w, 'node'), x, y, kind, designated: false, work: 0 });
@@ -71,6 +77,7 @@ export function generateWorld(seed = Date.now() >>> 0): World {
     rest: 88 - i * 7,
     mood: 85,
     skills: { plants: i === 0 ? 7 : 3, build: i === 1 ? 8 : 3, haul: i === 2 ? 6 : 3, cook: 3 },
+    knowledge: { agriculture: i === 0 ? 16 : i === 1 ? 3 : 8 },
     priorities: { plants: i === 0 ? 1 : 3, build: i === 1 ? 1 : 3, haul: i === 2 ? 1 : 2, cook: 2 },
     job: null,
     carrying: null,

@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { flatWorld } from './fixtures';
 import {
   CROPS,
+  BRACKISH_WATER_SALINITY,
   FERTILIZER_RESTORE,
+  SALTWATER_SALINITY,
   SEED_LIFETIME,
   advanceAgriculture,
   advanceSeedSpoilage,
@@ -12,10 +14,13 @@ import {
   cropStage,
   dropSeed,
   growthSuitability,
+  irrigationSources,
+  perceiveIrrigationSource,
   temperatureSuitability,
 } from '../../src/sim/agriculture';
 import { DAY_TICKS } from '../../src/sim/definitions';
-import { workCandidates } from '../../src/sim/job-board';
+import { rankCandidate, resolveCandidateForPawn, workCandidates } from '../../src/sim/job-board';
+import { assignJob } from '../../src/sim/job-assignment';
 import { advanceJob, interruptJob } from '../../src/sim/jobs';
 import { navigationGrid } from '../../src/sim/pathfinding';
 import { Reservations } from '../../src/sim/reservations';
@@ -30,6 +35,9 @@ import {
   usefulResourceTotal,
 } from '../../src/sim/world';
 import type { CropType, World } from '../../src/sim/types';
+import { applyCommand } from '../../src/sim/commands';
+import { DiagnosticLog } from '../../src/sim/diagnostics';
+import { generateWorld } from '../../src/sim/generate';
 
 function addZone(
   w: World,
@@ -40,7 +48,7 @@ function addZone(
 ) {
   const key = y * w.width + x;
   w.growingZones.push(key);
-  w.agriculture.push({ key, cropType, moisture: 60, nutrients: 82 });
+  w.agriculture.push({ key, cropType, moisture: 60, nutrients: 82, salinity: 0 });
   if (growth !== null) w.crops.push({ id: `crop-${w.nextId++}`, x, y, kind: cropType, growth });
   return w.agriculture.at(-1)!;
 }
@@ -289,6 +297,143 @@ describe('soil moisture', () => {
   });
 });
 
+describe('v0.9 irrigation judgement and salinity', () => {
+  function judgementWorld() {
+    const w = flatWorld();
+    const soil = addZone(w, 6, 6, 'potato', 0.2);
+    soil.moisture = 25;
+    const brackishKey = 6 * w.width + 4;
+    const freshKey = 1 * w.width + 1;
+    w.terrain[brackishKey] = 'water';
+    w.terrain[freshKey] = 'water';
+    w.waterSalinity = [{ key: brackishKey, salinity: BRACKISH_WATER_SALINITY }];
+    for (const pawn of w.pawns) {
+      pawn.x = 6;
+      pawn.y = 8;
+      pawn.skills.plants = 7;
+      pawn.priorities.plants = 1;
+    }
+    w.pawns[0]!.knowledge.agriculture = 20;
+    w.pawns[1]!.knowledge.agriculture = 0;
+    return { w, soil, brackishKey, freshKey };
+  }
+
+  it('gives starting colonists deterministic, observable brackish-water judgement', () => {
+    const w = generateWorld(42);
+    const source = irrigationSources(w).find((candidate) => candidate.sourceClass === 'brackish')!;
+    expect(source.salinity).toBe(BRACKISH_WATER_SALINITY);
+    const judgements = Object.fromEntries(
+      w.pawns.map((pawn) => [
+        pawn.name,
+        perceiveIrrigationSource(source, pawn.knowledge.agriculture),
+      ]),
+    );
+    expect(judgements.Ada!.perceivedSalinity).toBeCloseTo(18.4);
+    expect(judgements.Ada!.suitable).toBe(true);
+    expect(judgements.Kit!.perceivedSalinity).toBeCloseTo(22.4);
+    expect(judgements.Kit!.suitable).toBe(false);
+    expect(judgements.Rowan!.perceivedSalinity).toBeCloseTo(28.8);
+    expect(judgements.Rowan!.suitable).toBe(false);
+  });
+
+  it('resolves one shared watering need differently for equal-skill pawns', () => {
+    const { w, brackishKey, freshKey } = judgementWorld();
+    const watering = workCandidates(w).filter((candidate) => candidate.kind === 'water');
+    expect(watering).toHaveLength(1);
+    const expert = resolveCandidateForPawn(w.pawns[0]!, watering[0]!)!;
+    const novice = resolveCandidateForPawn(w.pawns[1]!, watering[0]!)!;
+    expect(expert.waterSourceKey).toBe(freshKey);
+    expect(expert.waterSalinity).toBe(0);
+    expect(novice.waterSourceKey).toBe(brackishKey);
+    expect(novice.waterSalinity).toBe(BRACKISH_WATER_SALINITY);
+  });
+
+  it('lets a novice complete brackish watering and crop growth responds only through soil', () => {
+    const { w, soil } = judgementWorld();
+    const novice = w.pawns[1]!;
+    w.pawns = [novice];
+    const reservations = new Reservations();
+    const grid = navigationGrid(w);
+    const diagnostics = new DiagnosticLog();
+    assignJob(w, novice, workCandidates(w), reservations, grid, new Map(), diagnostics);
+    expect(novice.job?.kind).toBe('water');
+    expect(novice.job?.waterSalinity).toBe(BRACKISH_WATER_SALINITY);
+    for (let i = 0; i < 400 && novice.job; i++)
+      advanceJob(w, novice, reservations, grid, undefined, diagnostics);
+    expect(novice.job).toBeNull();
+    expect(soil.moisture).toBeGreaterThan(25);
+    expect(soil.salinity).toBeGreaterThan(0);
+    const salty = growthSuitability(CROPS.potato, soil);
+    expect(salty.salinity).toBeLessThan(1);
+    expect(salty.effective).toBeLessThan(
+      growthSuitability(CROPS.potato, { ...soil, salinity: 0 }).effective,
+    );
+    const events = diagnostics.snapshot();
+    expect(events.some((event) => event.type === 'IRRIGATION_SOURCE_EVALUATED')).toBe(true);
+    expect(
+      events.some(
+        (event) =>
+          event.type === 'AGRICULTURAL_WATER_ACQUIRED' &&
+          event.values?.waterSalinity === BRACKISH_WATER_SALINITY,
+      ),
+    ).toBe(true);
+    expect(
+      events.some(
+        (event) => event.type === 'CROP_WATERED' && Number(event.values?.salinityAfter) > 0,
+      ),
+    ).toBe(true);
+  });
+
+  it('keeps obvious judgement common and unrelated Plants work knowledge-neutral', () => {
+    expect(perceiveIrrigationSource({ salinity: 0 }, 0).suitable).toBe(true);
+    expect(perceiveIrrigationSource({ salinity: SALTWATER_SALINITY }, 0).suitable).toBe(false);
+    expect(perceiveIrrigationSource({ salinity: BRACKISH_WATER_SALINITY }, 0).suitable).toBe(true);
+    expect(perceiveIrrigationSource({ salinity: BRACKISH_WATER_SALINITY }, 20).suitable).toBe(
+      false,
+    );
+    const { w } = judgementWorld();
+    const candidate = {
+      kind: 'harvest' as const,
+      destination: { x: 5, y: 5 },
+      adjacent: false,
+      keys: ['crop-test'],
+      work: 'plants' as const,
+      score: -6,
+    };
+    expect(rankCandidate(w.pawns[0]!, candidate)).toBe(rankCandidate(w.pawns[1]!, candidate));
+  });
+
+  it('preserves soil salinity when a growing zone is deleted and recreated', () => {
+    const w = flatWorld();
+    const soil = addZone(w, 3, 3);
+    soil.salinity = 24;
+    const reservations = new Reservations();
+    expect(
+      applyCommand(w, { type: 'growing', points: [{ x: 3, y: 3 }], cancel: true }, reservations),
+    ).toBe(1);
+    expect(agricultureAt(w, soil.key)?.salinity).toBe(24);
+    const loaded = decode(encode(w)).world;
+    expect(agricultureAt(loaded, soil.key)?.salinity).toBe(24);
+    expect(applyCommand(loaded, { type: 'growing', points: [{ x: 3, y: 3 }] }, reservations)).toBe(
+      1,
+    );
+    expect(agricultureAt(loaded, soil.key)?.salinity).toBe(24);
+  });
+
+  it('migrates schema 6 with freshwater, clean soil and viable knowledge defaults', () => {
+    const w: any = flatWorld();
+    addZone(w, 3, 3);
+    delete w.waterSalinity;
+    for (const pawn of w.pawns) delete pawn.knowledge;
+    for (const soil of w.agriculture) delete soil.salinity;
+    const payload = JSON.stringify(w);
+    const loaded = decode({ version: 6, savedAt: 1, payload, checksum: checksum(payload) }).world;
+    expect(loaded.waterSalinity).toEqual([]);
+    expect(loaded.agriculture[0]!.salinity).toBe(0);
+    expect(loaded.pawns.every((pawn) => pawn.knowledge.agriculture === 8)).toBe(true);
+  });
+});
+
 describe('soil nutrients and fertilizer', () => {
   it('growth depletes nutrients', () => {
     const w = flatWorld(),
@@ -442,15 +587,23 @@ describe('save compatibility and accounting', () => {
     dropSeed(w, { x: 2, y: 2 }, 'grain', 2);
     expect(decode({ ...encode(w), version: 5 }).world.items).toEqual(w.items);
   });
-  it('schema 6 roundtrips persistent agriculture and seed state', () => {
+  it('schema 7 roundtrips persistent agriculture and seed state', () => {
     const w = flatWorld();
-    addZone(w, 3, 3, 'potato', 0.43);
+    const soil = addZone(w, 3, 3, 'potato', 0.43);
+    soil.salinity = 17;
+    w.pawns[0]!.knowledge.agriculture = 14;
+    const waterKey = 8 * w.width + 8;
+    w.terrain[waterKey] = 'water';
+    w.waterSalinity.push({ key: waterKey, salinity: BRACKISH_WATER_SALINITY });
     dropSeed(w, { x: 2, y: 2 }, 'potato', 3);
     const saved = encode(w);
-    expect(saved.version).toBe(6);
+    expect(saved.version).toBe(7);
     const loaded = decode(saved).world;
     expect(loaded.agriculture[0]!.cropType).toBe('potato');
     expect(loaded.crops[0]!.growth).toBe(0.43);
+    expect(loaded.agriculture[0]!.salinity).toBe(17);
+    expect(loaded.waterSalinity).toEqual(w.waterSalinity);
+    expect(loaded.pawns[0]!.knowledge.agriculture).toBe(14);
     expect(seedTotal(loaded, 'potato')).toBe(3);
   });
   it('migrates schema 5 grain crops, initializes soil and provides a recovery seed cache', () => {
@@ -464,10 +617,29 @@ describe('save compatibility and accounting', () => {
     expect(agricultureAt(loaded, key)?.cropType).toBe('grain');
     expect(seedTotal(loaded, 'grain')).toBeGreaterThanOrEqual(6);
   });
+  it('rejects invalid schema 7 water salinity and knowledge state', () => {
+    const w = flatWorld();
+    w.waterSalinity = [{ key: 0, salinity: 36 }];
+    let payload = JSON.stringify(w);
+    expect(() => decode({ version: 7, savedAt: 1, payload, checksum: checksum(payload) })).toThrow(
+      'water salinity',
+    );
+    w.waterSalinity = [];
+    w.pawns[0]!.knowledge.agriculture = 2.5;
+    payload = JSON.stringify(w);
+    expect(() => decode({ version: 7, savedAt: 1, payload, checksum: checksum(payload) })).toThrow(
+      'knowledge',
+    );
+  });
   it('uses multiplicative constraints so excellent nutrients cannot overcome no water', () => {
     expect(
-      growthSuitability(CROPS.potato, { key: 1, cropType: 'potato', moisture: 0, nutrients: 100 })
-        .effective,
+      growthSuitability(CROPS.potato, {
+        key: 1,
+        cropType: 'potato',
+        moisture: 0,
+        nutrients: 100,
+        salinity: 0,
+      }).effective,
     ).toBe(0);
   });
   it('gives seeds a conventional long expiry rather than viability percentages', () => {

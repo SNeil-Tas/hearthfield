@@ -8,6 +8,7 @@ export type CropStage = 'seeded' | 'germinating' | 'seedling' | 'growing' | 'mat
 export type Resource = 'wood' | 'stone' | 'food' | 'waste' | 'seed' | 'fertilizer';
 export type FoodType = 'raw' | 'meal';
 export type WeatherKind = 'clear' | 'rain' | 'heavy-rain' | 'storm';
+export type WaterSourceClass = 'fresh' | 'brackish' | 'saltwater';
 export type ActivityKind =
   'sleeping' | 'resting' | 'walking' | 'light-work' | 'working' | 'heavy-work' | 'hauling';
 export type BuildingKind = 'wall' | 'door' | 'bed' | 'cooking';
@@ -61,15 +62,22 @@ export interface Crop extends Point {
   id: string;
   kind: CropType;
   growth: number;
-  stallReason?: 'dry' | 'wet' | 'nutrients';
+  stallReason?: 'dry' | 'wet' | 'nutrients' | 'salinity';
 }
 export interface AgricultureTile {
   key: number;
   cropType: CropType;
   moisture: number;
   nutrients: number;
+  /** Abstract 0-100 soil salt burden; intentionally not a calibrated real-world unit. */
+  salinity: number;
   lastWateredAt?: number;
   lastFertilizedAt?: number;
+}
+export interface WaterSalinityTile {
+  key: number;
+  /** Abstract 0-100 irrigation-water salinity. Missing water tiles are fresh (0). */
+  salinity: number;
 }
 export interface Building extends Point {
   id: string;
@@ -96,6 +104,9 @@ export interface Job {
   keys: string[];
   amount?: number;
   waterAmount?: number;
+  waterSalinity?: number;
+  waterSourceClass?: WaterSourceClass;
+  waterSourceKey?: number;
   cookTransactionId?: string;
   waitingForSource?: boolean;
   personalFoodPlan?: boolean;
@@ -110,6 +121,7 @@ export interface Pawn extends Point {
   rest: number;
   mood: number;
   skills: Record<WorkType, number>;
+  knowledge: { agriculture: number };
   priorities: Record<WorkType, number>;
   job: Job | null;
   carrying: Stack | null;
@@ -138,6 +150,7 @@ export interface World {
   crops: Crop[];
   growingZones: number[];
   agriculture: AgricultureTile[];
+  waterSalinity: WaterSalinityTile[];
   items: Item[];
   buildings: Building[];
   blueprints: Blueprint[];

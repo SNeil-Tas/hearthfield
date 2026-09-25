@@ -67,7 +67,6 @@ export function applyCommand(w: World, command: Command, reservations: Reservati
       if (command.cancel) {
         if (w.growingZones.includes(key)) {
           w.growingZones = w.growingZones.filter((k) => k !== key);
-          w.agriculture = w.agriculture.filter((soil) => soil.key !== key);
           const crop = w.crops.find((c) => sameTile(c, p));
           if (crop) w.crops = w.crops.filter((c) => c.id !== crop.id);
           for (const pawn of w.pawns)
@@ -132,7 +131,6 @@ export function applyCommand(w: World, command: Command, reservations: Reservati
         }
         if (w.growingZones.includes(key)) {
           w.growingZones = w.growingZones.filter((k) => k !== key);
-          w.agriculture = w.agriculture.filter((soil) => soil.key !== key);
           const crop = w.crops.find((c) => sameTile(c, p));
           if (crop) w.crops = w.crops.filter((c) => c.id !== crop.id);
           changed++;

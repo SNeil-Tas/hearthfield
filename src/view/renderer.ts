@@ -5,6 +5,7 @@ import type { UIState } from '../ui/state';
 import { Camera } from './camera';
 import { roomTopology } from '../sim/topology';
 import { precipitationIntensity } from '../sim/weather';
+import { waterSalinityAt, waterSourceClass } from '../sim/agriculture';
 
 // Warm earth tone signals recognised indoor ground; entities and zones draw above it.
 const INDOOR_FLOOR_COLOR = '#b0a184';
@@ -52,7 +53,15 @@ export class Renderer {
         const p = cam.screen({ x, y }),
           terrain = w.terrain[y * w.width + x]!,
           hash = ((x * 73856093) ^ (y * 19349663) ^ w.seed) >>> 0;
-        c.fillStyle = topology.isIndoors({ x, y }) ? INDOOR_FLOOR_COLOR : TERRAIN[terrain].color;
+        const waterClass =
+          terrain === 'water' ? waterSourceClass(waterSalinityAt(w, y * w.width + x)) : null;
+        c.fillStyle = topology.isIndoors({ x, y })
+          ? INDOOR_FLOOR_COLOR
+          : waterClass === 'saltwater'
+            ? '#496f82'
+            : waterClass === 'brackish'
+              ? '#627e72'
+              : TERRAIN[terrain].color;
         c.fillRect(p.x - z / 2, p.y - z / 2, z + 1, z + 1);
         c.fillStyle = hash % 2 ? '#ffffff05' : '#122b1406';
         c.fillRect(p.x - z / 2, p.y - z / 2, z, z);

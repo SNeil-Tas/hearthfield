@@ -1,6 +1,11 @@
 import type { Pawn, World } from './types';
 import { findPath } from './pathfinding';
-import { needCandidates, rankCandidate, type Candidate } from './job-board';
+import {
+  needCandidates,
+  rankCandidate,
+  resolveCandidateForPawn,
+  type Candidate,
+} from './job-board';
 import { Reservations } from './reservations';
 import { DiagnosticLog, point } from './diagnostics';
 import { foodType, freshPoints, requiresFoodSeparation } from './world';
@@ -26,7 +31,10 @@ export function assignJob(
           ? 2
           : 3;
   const candidates = [...needCandidates(w, pawn), ...board]
-    .map((c) => ({ candidate: c, rank: rankCandidate(pawn, c) }))
+    .flatMap((c) => {
+      const candidate = resolveCandidateForPawn(pawn, c);
+      return candidate ? [{ candidate, rank: rankCandidate(pawn, candidate) }] : [];
+    })
     .filter(
       ({ candidate, rank }) =>
         Number.isFinite(rank) &&
@@ -78,8 +86,32 @@ export function assignJob(
       targetId: c.targetId ?? c.sourceId,
       jobType: c.kind,
       position: point(pawn),
-      values: { score: rankCandidate(pawn, c) },
+      values: {
+        score: rankCandidate(pawn, c),
+        plantsSkill: pawn.skills.plants,
+        agricultureKnowledge: pawn.knowledge.agriculture,
+        waterSalinity: c.waterSalinity ?? null,
+        perceivedSalinity:
+          c.irrigationEvaluation?.find((entry) => entry.sourceId === c.sourceId)
+            ?.perceivedSalinity ?? null,
+      },
     });
+    for (const evaluation of c.irrigationEvaluation ?? [])
+      diagnostics?.record(w, 'IRRIGATION_SOURCE_EVALUATED', {
+        entityId: pawn.id,
+        entityName: pawn.name,
+        targetId: evaluation.sourceId,
+        jobType: 'water',
+        values: {
+          plantsSkill: pawn.skills.plants,
+          agricultureKnowledge: pawn.knowledge.agriculture,
+          sourceClass: evaluation.sourceClass,
+          actualSalinity: evaluation.actualSalinity,
+          perceivedSalinity: evaluation.perceivedSalinity,
+          suitable: evaluation.suitable,
+          selected: evaluation.sourceId === c.sourceId,
+        },
+      });
     const path = findPath(w, pawn, c.source ?? c.destination, c.adjacent, grid);
     const onward = c.source ? findPath(w, c.source, c.destination, c.adjacent, grid) : [];
     if (path === null || onward === null) {
@@ -123,6 +155,9 @@ export function assignJob(
       progress: 0,
       keys: c.keys,
       amount: c.amount,
+      waterSalinity: c.waterSalinity,
+      waterSourceClass: c.waterSourceClass,
+      waterSourceKey: c.waterSourceKey,
       personalFoodPlan: c.personalFoodPlan || (c.kind === 'cook' && pawn.hunger < 38),
       cookTransactionId: c.kind === 'cook' ? `${pawn.id}:${c.targetId}:${w.tick}` : undefined,
     };

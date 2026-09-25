@@ -4,6 +4,7 @@ import {
   cropStage,
   cropStatus,
   growthSuitability,
+  salinitySuitability,
   seedItems,
 } from '../sim/agriculture';
 import type { Crop, Point, World } from '../sim/types';
@@ -43,5 +44,6 @@ export function agricultureContextHTML(w: World, point: Point, crop?: Crop) {
       return `<button class="text-button" data-action="crop" data-value="${key}:${type}"${selected}>${def.name} <span>${seeds} seed</span></button>`;
     })
     .join('');
-  return `<span class="eyebrow">GROWING ZONE · ${current.name.toUpperCase()}</span><h3>${stageName}</h3><p>Crop: ${current.name}<br>Stage: ${stageName}${actualCrop ? `<br>Growth: ${Math.round(actualCrop.growth * 100)}%` : ''}<br>Moisture: ${Math.round(soil.moisture)} / ${band(soil.moisture, current.preferredMoisture, current.toleratedMoisture)}<br>Nutrients: ${Math.round(soil.nutrients)} / ${factors.nutrients >= 0.95 ? 'Suitable' : factors.nutrients <= 0.05 ? 'Deficient' : 'Low'}<br>Temperature: Not simulated / Suitable<br>Status: ${status}</p><div class="crop-choice">${choices}</div>`;
+  const saltSuitability = salinitySuitability(current, soil.salinity);
+  return `<span class="eyebrow">GROWING ZONE · ${current.name.toUpperCase()}</span><h3>${stageName}</h3><p>Crop: ${current.name}<br>Stage: ${stageName}${actualCrop ? `<br>Growth: ${Math.round(actualCrop.growth * 100)}%` : ''}<br>Moisture: ${Math.round(soil.moisture)} / ${band(soil.moisture, current.preferredMoisture, current.toleratedMoisture)}<br>Nutrients: ${Math.round(soil.nutrients)} / ${factors.nutrients >= 0.95 ? 'Suitable' : factors.nutrients <= 0.05 ? 'Deficient' : 'Low'}<br>Soil salinity: ${soil.salinity.toFixed(1)} / ${saltSuitability >= 0.95 ? 'Suitable' : saltSuitability <= 0.05 ? 'Stressed' : 'Marginal'}<br>Temperature: Not simulated / Suitable<br>Status: ${status}</p><div class="crop-choice">${choices}</div>`;
 }

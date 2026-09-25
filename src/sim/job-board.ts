@@ -1,6 +1,15 @@
 import { BUILDINGS, COOKING_INPUT } from './definitions';
-import type { Job, Pawn, Point, WorkType, World } from './types';
-import { agricultureAt, CROPS, nearestWaterAccess, needsWatering, seedItems } from './agriculture';
+import type { Job, Pawn, Point, WaterSourceClass, WorkType, World } from './types';
+import {
+  agricultureAt,
+  CROPS,
+  irrigationSources,
+  needsWatering,
+  perceiveIrrigationSource,
+  seedItems,
+  type IrrigationPerception,
+  type IrrigationSource,
+} from './agriculture';
 import {
   distance,
   tileKey,
@@ -30,9 +39,17 @@ export interface Candidate {
   amount?: number;
   score: number;
   personalFoodPlan?: boolean;
+  irrigationSources?: IrrigationSource[];
+  waterSalinity?: number;
+  waterSourceClass?: WaterSourceClass;
+  waterSourceKey?: number;
+  irrigationEvaluation?: Array<
+    IrrigationPerception & { sourceId: string; sourceClass: WaterSourceClass }
+  >;
 }
 export function workCandidates(w: World): Candidate[] {
   const candidates: Candidate[] = [];
+  const waterSources = irrigationSources(w);
   for (const node of w.nodes)
     if (node.designated)
       candidates.push({
@@ -108,18 +125,17 @@ export function workCandidates(w: World): Candidate[] {
     if (dryKeys.has(key)) {
       const neighbors = [key - 1, key + 1, key - w.width, key + w.width];
       if (!neighbors.some((other) => dryKeys.has(other) && other < key)) {
-        const source = nearestWaterAccess(w, tile);
-        if (source)
+        if (waterSources.length)
           candidates.push({
             kind: 'water',
             sourceKind: 'water',
             targetId: `zone:${key}`,
-            source,
             destination: tile,
             adjacent: false,
-            keys: [`water:${tileKey(w, source)}`, `grow:${key}`],
+            keys: [`grow:${key}`],
             work: 'plants',
             score: -3,
+            irrigationSources: waterSources,
           });
       }
     }
@@ -402,12 +418,62 @@ export function needCandidates(w: World, pawn: Pawn): Candidate[] {
   return candidates;
 }
 export function rankCandidate(pawn: Pawn, candidate: Candidate) {
-  if (!candidate.work) return candidate.score;
-  const priority = pawn.priorities[candidate.work];
+  const resolved =
+    candidate.kind === 'water' && candidate.irrigationSources
+      ? resolveCandidateForPawn(pawn, candidate)
+      : candidate;
+  if (!resolved) return Infinity;
+  if (!resolved.work) return resolved.score;
+  const priority = pawn.priorities[resolved.work];
   return priority === 0
     ? Infinity
     : priority * 100 +
-        distance(pawn, candidate.source ?? candidate.destination) +
-        candidate.score -
-        pawn.skills[candidate.work] * 2;
+        distance(pawn, resolved.source ?? resolved.destination) +
+        resolved.score -
+        pawn.skills[resolved.work] * 2;
+}
+
+export function resolveCandidateForPawn(pawn: Pawn, candidate: Candidate): Candidate | null {
+  if (candidate.kind !== 'water' || !candidate.irrigationSources) return candidate;
+  const evaluation = candidate.irrigationSources.map((source) => ({
+    source,
+    perception: perceiveIrrigationSource(source, pawn.knowledge.agriculture),
+  }));
+  const choices = evaluation.flatMap(({ source, perception }) => {
+    if (!perception.suitable) return [];
+    let access = source.accessPoints[0];
+    let cost = access
+      ? distance(pawn, access.point) + distance(access.point, candidate.destination)
+      : Infinity;
+    for (const option of source.accessPoints.slice(1)) {
+      const optionCost =
+        distance(pawn, option.point) + distance(option.point, candidate.destination);
+      if (optionCost < cost) {
+        access = option;
+        cost = optionCost;
+      }
+    }
+    return access ? [{ source, perception, access, cost }] : [];
+  });
+  const selected = choices.reduce<(typeof choices)[number] | undefined>(
+    (best, choice) => (!best || choice.cost < best.cost ? choice : best),
+    undefined,
+  );
+  if (!selected) return null;
+  return {
+    ...candidate,
+    source: selected.access.point,
+    sourceId: selected.source.id,
+    keys: [`water:${selected.access.key}`, ...candidate.keys],
+    score: candidate.score + distance(selected.access.point, candidate.destination),
+    waterSalinity: selected.source.salinity,
+    waterSourceClass: selected.source.sourceClass,
+    waterSourceKey: selected.access.waterKey,
+    irrigationEvaluation: evaluation.map(({ source, perception }) => ({
+      sourceId: source.id,
+      sourceClass: source.sourceClass,
+      ...perception,
+    })),
+    irrigationSources: undefined,
+  };
 }

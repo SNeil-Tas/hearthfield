@@ -15,7 +15,7 @@ import {
 } from '../sim/world';
 import { APP_VERSION, BUILD_ID } from '../build';
 import { formatResourcePoints } from './format';
-import { CROPS } from '../sim/agriculture';
+import { CROPS, waterSalinityAt, waterSourceClass } from '../sim/agriculture';
 import { agricultureContextHTML } from './agriculture-context';
 
 const toolButton = (tool: string, label: string, detail: string, symbol = tool) =>
@@ -59,7 +59,7 @@ export function panelHTML(panel: Panel, w: World, debug: boolean) {
               )
                 .map((type) => {
                   const t = type as keyof typeof WORK;
-                  return `<td><button data-action="priority" data-value="${p.id}:${t}" aria-label="${esc(p.name)} ${WORK[t]} priority ${p.priorities[t] || 'off'}"><b class="priority-${p.priorities[t]}">${p.priorities[t] || '—'}</b><small>skill ${p.skills[t]}</small></button></td>`;
+                  return `<td><button data-action="priority" data-value="${p.id}:${t}" aria-label="${esc(p.name)} ${WORK[t]} priority ${p.priorities[t] || 'off'}"><b class="priority-${p.priorities[t]}">${p.priorities[t] || '—'}</b><small>skill ${p.skills[t]}${t === 'plants' ? ` · knowledge ${p.knowledge.agriculture}` : ''}</small></button></td>`;
                 })
                 .join('')}</tr>`,
           )
@@ -100,7 +100,7 @@ export function contextHTML(w: World, ui: UIState, owner?: string) {
     const meter = (label: string, value: number) =>
       `<div class="need"><span>${label}</span><meter min="0" max="100" low="25" high="60" optimum="100" value="${value}"></meter><b>${Math.round(value)}</b></div>`;
     const moodLabel = p.mood >= 60 ? 'Normal' : p.mood >= 30 ? 'Strained' : 'Miserable';
-    content = `<span class="eyebrow">COLONIST · ${esc(moodLabel.toUpperCase())}</span><h3>${esc(p.name)}</h3><p class="job-status">${p.job ? JOB_LABELS[p.job.kind] : 'Taking a breather'}${p.carrying ? ` · ${p.carrying.quantity} ${p.carrying.resource}` : ''}</p><div class="needs">${meter('Food', p.hunger)}${meter('Rest', p.rest)}${meter('Health', p.health)}</div><p>Hunger drain ${(p.activity === 'hauling' ? 3.8 : p.activity === 'heavy-work' ? 3.3 : 2.7).toFixed(1)} / hour · ${p.activity ?? 'resting'}<br>Mood: ${moodLabel} · work speed ${Math.round((p.productivity ?? 1) * 100)}%${p.illnessUntil && p.illnessUntil > w.tick ? ' · mildly ill' : ''}</p><button class="text-button" data-action="panel" data-value="work">Manage work priorities <span>↗</span></button><button class="text-button" data-action="copy-debug">Copy Selected Colonist Debug <span>↗</span></button>`;
+    content = `<span class="eyebrow">COLONIST · ${esc(moodLabel.toUpperCase())}</span><h3>${esc(p.name)}</h3><p class="job-status">${p.job ? JOB_LABELS[p.job.kind] : 'Taking a breather'}${p.carrying ? ` · ${p.carrying.quantity} ${p.carrying.resource}` : ''}</p><div class="needs">${meter('Food', p.hunger)}${meter('Rest', p.rest)}${meter('Health', p.health)}</div><p>Hunger drain ${(p.activity === 'hauling' ? 3.8 : p.activity === 'heavy-work' ? 3.3 : 2.7).toFixed(1)} / hour · ${p.activity ?? 'resting'}<br>Mood: ${moodLabel} · work speed ${Math.round((p.productivity ?? 1) * 100)}%${p.illnessUntil && p.illnessUntil > w.tick ? ' · mildly ill' : ''}<br>Plants skill: ${p.skills.plants} · Agriculture knowledge: ${p.knowledge.agriculture}</p><button class="text-button" data-action="panel" data-value="work">Manage work priorities <span>↗</span></button><button class="text-button" data-action="copy-debug">Copy Selected Colonist Debug <span>↗</span></button>`;
   } else if (node) {
     const def = NODES[node.kind];
     content = `<span class="eyebrow">${node.designated ? 'MARKED FOR GATHERING' : 'NATURAL RESOURCE'}</span><h3>${def.label}</h3><p>${def.yield} ${def.resource} when gathered.</p><button class="primary" data-action="node" data-value="${node.designated ? 'cancel' : 'gather'}">${icon(node.designated ? 'close' : 'orders')}${node.designated ? 'Cancel order' : node.kind === 'tree' ? 'Chop tree' : 'Gather'}</button>`;
@@ -158,7 +158,8 @@ export function contextHTML(w: World, ui: UIState, owner?: string) {
     else {
       const terrain = w.terrain[tileKey(w, ui.selectedTile)];
       if (!terrain) return '';
-      content = `<span class="eyebrow">${ui.selectedTile.x}, ${ui.selectedTile.y}</span><h3>${TERRAIN[terrain].label}</h3><p>${w.dumpZones.includes(tileKey(w, ui.selectedTile)) ? 'Dump zone · accepts spoiled food and waste' : w.stockpiles.includes(tileKey(w, ui.selectedTile)) ? 'Stockpile · Accepts wood, stone and food' : TERRAIN[terrain].passable ? 'Open ground. A place for something new.' : 'Impassable water.'}</p>`;
+      const salinity = terrain === 'water' ? waterSalinityAt(w, tileKey(w, ui.selectedTile)) : 0;
+      content = `<span class="eyebrow">${ui.selectedTile.x}, ${ui.selectedTile.y}</span><h3>${TERRAIN[terrain].label}</h3><p>${w.dumpZones.includes(tileKey(w, ui.selectedTile)) ? 'Dump zone · accepts spoiled food and waste' : w.stockpiles.includes(tileKey(w, ui.selectedTile)) ? 'Stockpile · Accepts wood, stone and food' : TERRAIN[terrain].passable ? 'Open ground. A place for something new.' : `${waterSourceClass(salinity)} irrigation source · salinity ${salinity.toFixed(1)} · impassable`}</p>`;
     }
   } else return '';
   const selected = e ?? ui.selectedTile;

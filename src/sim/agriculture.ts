@@ -1,5 +1,14 @@
 import { DAY_TICKS } from './definitions';
-import type { AgricultureTile, Crop, CropStage, CropType, Item, Point, World } from './types';
+import type {
+  AgricultureTile,
+  Crop,
+  CropStage,
+  CropType,
+  Item,
+  Point,
+  WaterSourceClass,
+  World,
+} from './types';
 import { roomTopology } from './topology';
 import { isRainExposed, precipitationIntensity } from './weather';
 import { distance, nextId, sameTile, tileKey, walkable } from './world';
@@ -19,6 +28,8 @@ export interface CropDefinition {
   minTemperature: number;
   preferredTemperature: readonly [number, number];
   maxTemperature: number;
+  preferredMaxSalinity: number;
+  toleratedMaxSalinity: number;
 }
 
 export const CROPS: Record<CropType, CropDefinition> = {
@@ -36,6 +47,8 @@ export const CROPS: Record<CropType, CropDefinition> = {
     minTemperature: 5,
     preferredTemperature: [12, 22],
     maxTemperature: 32,
+    preferredMaxSalinity: 8,
+    toleratedMaxSalinity: 32,
   },
   grain: {
     id: 'grain',
@@ -51,6 +64,8 @@ export const CROPS: Record<CropType, CropDefinition> = {
     minTemperature: 4,
     preferredTemperature: [10, 24],
     maxTemperature: 34,
+    preferredMaxSalinity: 6,
+    toleratedMaxSalinity: 25,
   },
   berry: {
     id: 'berry',
@@ -66,6 +81,8 @@ export const CROPS: Record<CropType, CropDefinition> = {
     minTemperature: 7,
     preferredTemperature: [14, 24],
     maxTemperature: 31,
+    preferredMaxSalinity: 10,
+    toleratedMaxSalinity: 38,
   },
 };
 
@@ -76,6 +93,29 @@ export const WATERING_WORK_SECONDS = 1.5;
 export const FERTILIZING_WORK_SECONDS = 1.5;
 export const PLANTING_WORK_SECONDS = 1.2;
 export const HARVEST_WORK_SECONDS = 3;
+export const FRESH_WATER_SALINITY = 0;
+export const BRACKISH_WATER_SALINITY = 32;
+export const SALTWATER_SALINITY = 85;
+export const SAFE_IRRIGATION_SALINITY = 20;
+export const OBVIOUS_SALTWATER_SALINITY = 70;
+
+export interface IrrigationAccess {
+  point: Point;
+  key: number;
+  waterKey: number;
+}
+export interface IrrigationSource {
+  id: string;
+  salinity: number;
+  sourceClass: WaterSourceClass;
+  accessPoints: IrrigationAccess[];
+}
+export interface IrrigationPerception {
+  actualSalinity: number;
+  perceivedSalinity: number;
+  suitable: boolean;
+  reason: 'fresh' | 'acceptable' | 'ambiguous' | 'obviously-saline';
+}
 
 const clamp = (value: number, min = 0, max = 100) => Math.max(min, Math.min(max, value));
 
@@ -108,6 +148,17 @@ export function nutrientSuitability(def: CropDefinition, nutrients: number) {
   return clamp(nutrients / fullAt, 0, 1);
 }
 
+export function salinitySuitability(def: CropDefinition, salinity: number) {
+  if (salinity <= def.preferredMaxSalinity) return 1;
+  if (salinity >= def.toleratedMaxSalinity) return 0;
+  return clamp(
+    (def.toleratedMaxSalinity - salinity) /
+      Math.max(1e-6, def.toleratedMaxSalinity - def.preferredMaxSalinity),
+    0,
+    1,
+  );
+}
+
 /** Future hook: undefined means there is no authoritative temperature system yet. */
 export function temperatureSuitability(def: CropDefinition, temperature?: number) {
   if (temperature === undefined) return 1;
@@ -129,11 +180,13 @@ export function growthSuitability(def: CropDefinition, soil: AgricultureTile) {
   const moisture = moistureSuitability(def, soil.moisture);
   const nutrients = nutrientSuitability(def, soil.nutrients);
   const temperature = temperatureSuitability(def, undefined);
+  const salinity = salinitySuitability(def, soil.salinity);
   return {
     moisture,
     nutrients,
     temperature,
-    effective: clamp(moisture * nutrients * temperature, 0, 1),
+    salinity,
+    effective: clamp(moisture * nutrients * temperature * salinity, 0, 1),
   };
 }
 
@@ -150,6 +203,7 @@ export function ensureAgricultureTile(w: World, key: number, cropType: CropType 
       cropType,
       moisture: w.terrain[key] === 'fertile' ? 68 : 60,
       nutrients: w.terrain[key] === 'fertile' ? 95 : 82,
+      salinity: 0,
     };
     w.agriculture.push(soil);
   }
@@ -168,6 +222,7 @@ export function cropStatus(w: World, crop: Crop) {
       stalled: true,
     };
   if (suitability.nutrients <= 0.05) return { text: 'Nutrient deficient', stalled: true };
+  if (suitability.salinity <= 0.05) return { text: 'Salinity stressed', stalled: true };
   if (suitability.effective < 0.65) return { text: 'Growing slowly', stalled: false };
   return { text: 'Growing normally', stalled: false };
 }
@@ -176,6 +231,7 @@ function stallReason(def: CropDefinition, soil: AgricultureTile) {
   if (soil.moisture < def.toleratedMoisture[0]) return 'dry' as const;
   if (soil.moisture > def.toleratedMoisture[1]) return 'wet' as const;
   if (nutrientSuitability(def, soil.nutrients) <= 0.05) return 'nutrients' as const;
+  if (salinitySuitability(def, soil.salinity) <= 0.05) return 'salinity' as const;
   return undefined;
 }
 
@@ -187,7 +243,8 @@ export function advanceAgriculture(w: World, elapsedTicks: number, diagnostics?:
     const rainGain =
       precipitation > 0 && isRainExposed(w, p) ? precipitation * 0.0018 * elapsedTicks : 0;
     const evaporation = (precipitation === 0 ? 0.0012 : 0.0003) * elapsedTicks;
-    soil.moisture = clamp(soil.moisture + rainGain - evaporation);
+    if (rainGain > 0) applyWaterToSoil(soil, rainGain, FRESH_WATER_SALINITY);
+    soil.moisture = clamp(soil.moisture - evaporation);
     if (!crop || crop.growth >= 1) continue;
     const def = CROPS[crop.kind];
     const previousStage = cropStage(crop.growth);
@@ -210,6 +267,8 @@ export function advanceAgriculture(w: World, elapsedTicks: number, diagnostics?:
           growth: crop.growth,
           moisture: soil.moisture,
           nutrients: soil.nutrients,
+          salinity: soil.salinity,
+          salinitySuitability: suitability.salinity,
         },
       });
     const reason = stallReason(def, soil);
@@ -217,7 +276,11 @@ export function advanceAgriculture(w: World, elapsedTicks: number, diagnostics?:
       if (reason)
         diagnostics?.record(
           w,
-          reason === 'nutrients' ? 'CROP_STALLED_NUTRIENTS' : 'CROP_STALLED_MOISTURE',
+          reason === 'nutrients'
+            ? 'CROP_STALLED_NUTRIENTS'
+            : reason === 'salinity'
+              ? 'CROP_STALLED_SALINITY'
+              : 'CROP_STALLED_MOISTURE',
           {
             targetId: crop.id,
             reason,
@@ -227,6 +290,7 @@ export function advanceAgriculture(w: World, elapsedTicks: number, diagnostics?:
               growth: crop.growth,
               moisture: soil.moisture,
               nutrients: soil.nutrients,
+              salinity: soil.salinity,
             },
           },
         );
@@ -239,6 +303,7 @@ export function advanceAgriculture(w: World, elapsedTicks: number, diagnostics?:
             growth: crop.growth,
             moisture: soil.moisture,
             nutrients: soil.nutrients,
+            salinity: soil.salinity,
           },
         });
       crop.stallReason = reason;
@@ -301,6 +366,7 @@ export function needsWatering(def: CropDefinition, soil: AgricultureTile) {
 export function applyWatering(
   w: World,
   target: Point,
+  waterSalinity = FRESH_WATER_SALINITY,
   diagnostics?: DiagnosticLog,
   pawnId?: string,
 ) {
@@ -315,17 +381,39 @@ export function applyWatering(
     const def = CROPS[crop.kind];
     if (!needsWatering(def, soil)) continue;
     const before = soil.moisture;
-    soil.moisture = clamp(soil.moisture + WATERING_AMOUNT);
+    const salinityBefore = soil.salinity;
+    applyWaterToSoil(soil, WATERING_AMOUNT, waterSalinity);
     soil.lastWateredAt = w.tick;
     watered++;
     diagnostics?.record(w, 'CROP_WATERED', {
       entityId: pawnId,
       targetId: crop.id,
       position: { x: key % w.width, y: Math.floor(key / w.width) },
-      values: { crop: crop.kind, before, after: soil.moisture },
+      values: {
+        crop: crop.kind,
+        before,
+        after: soil.moisture,
+        waterSalinity,
+        salinityBefore,
+        salinityAfter: soil.salinity,
+      },
     });
   }
   return watered;
+}
+
+export function applyWaterToSoil(
+  soil: AgricultureTile,
+  moistureAmount: number,
+  waterSalinity: number,
+) {
+  const added = Math.max(0, Math.min(moistureAmount, 100 - soil.moisture));
+  if (added <= 0) return;
+  const existingWater = Math.max(10, soil.moisture);
+  soil.salinity = clamp(
+    (soil.salinity * existingWater + clamp(waterSalinity) * added) / (existingWater + added),
+  );
+  soil.moisture = clamp(soil.moisture + added);
 }
 
 export function applyFertilizer(
@@ -348,27 +436,105 @@ export function applyFertilizer(
   return true;
 }
 
-export function waterAccessPoints(w: World) {
-  const result: Point[] = [];
-  const seen = new Set<number>();
-  for (let y = 0; y < w.height; y++)
-    for (let x = 0; x < w.width; x++) {
-      const key = y * w.width + x;
-      if (w.terrain[key] !== 'water') continue;
-      for (const p of [
-        { x: x - 1, y },
-        { x: x + 1, y },
-        { x, y: y - 1 },
-        { x, y: y + 1 },
-      ]) {
-        if (!walkable(w, p)) continue;
-        const accessKey = tileKey(w, p);
-        if (seen.has(accessKey)) continue;
-        seen.add(accessKey);
-        result.push(p);
+export function waterSalinityAt(w: World, key: number) {
+  return w.waterSalinity.find((entry) => entry.key === key)?.salinity ?? FRESH_WATER_SALINITY;
+}
+
+export function waterSourceClass(salinity: number): WaterSourceClass {
+  if (salinity >= OBVIOUS_SALTWATER_SALINITY) return 'saltwater';
+  if (salinity > SAFE_IRRIGATION_SALINITY) return 'brackish';
+  return 'fresh';
+}
+
+export function perceiveIrrigationSource(
+  source: Pick<IrrigationSource, 'salinity'>,
+  agricultureKnowledge: number,
+): IrrigationPerception {
+  const actualSalinity = clamp(source.salinity);
+  if (actualSalinity >= OBVIOUS_SALTWATER_SALINITY)
+    return {
+      actualSalinity,
+      perceivedSalinity: actualSalinity,
+      suitable: false,
+      reason: 'obviously-saline',
+    };
+  if (actualSalinity <= SAFE_IRRIGATION_SALINITY)
+    return {
+      actualSalinity,
+      perceivedSalinity: actualSalinity,
+      suitable: true,
+      reason: 'fresh',
+    };
+  const knowledge = clamp(agricultureKnowledge, 0, 20);
+  const perceivedSalinity = actualSalinity * (0.5 + knowledge / 40);
+  return {
+    actualSalinity,
+    perceivedSalinity,
+    suitable: perceivedSalinity <= SAFE_IRRIGATION_SALINITY,
+    reason: perceivedSalinity <= SAFE_IRRIGATION_SALINITY ? 'acceptable' : 'ambiguous',
+  };
+}
+
+const sourceCache = new WeakMap<
+  World,
+  { terrain: TerrainReference; salinity: World['waterSalinity']; sources: IrrigationSource[] }
+>();
+type TerrainReference = World['terrain'];
+
+export function irrigationSources(w: World): IrrigationSource[] {
+  const cached = sourceCache.get(w);
+  if (cached?.terrain === w.terrain && cached.salinity === w.waterSalinity) return cached.sources;
+  const visited = new Uint8Array(w.width * w.height);
+  const sources: IrrigationSource[] = [];
+  const salinityByKey = new Map(w.waterSalinity.map((entry) => [entry.key, entry.salinity]));
+  const salinityAt = (key: number) => salinityByKey.get(key) ?? FRESH_WATER_SALINITY;
+  const neighbours = (key: number) => {
+    const x = key % w.width;
+    const y = Math.floor(key / w.width);
+    return [
+      { x: x - 1, y },
+      { x: x + 1, y },
+      { x, y: y - 1 },
+      { x, y: y + 1 },
+    ];
+  };
+  for (let start = 0; start < w.terrain.length; start++) {
+    if (visited[start] || w.terrain[start] !== 'water') continue;
+    const salinity = salinityAt(start);
+    const queue = [start];
+    const access = new Map<number, IrrigationAccess>();
+    let minimumKey = start;
+    visited[start] = 1;
+    while (queue.length) {
+      const key = queue.shift()!;
+      minimumKey = Math.min(minimumKey, key);
+      for (const point of neighbours(key)) {
+        if (point.x < 0 || point.y < 0 || point.x >= w.width || point.y >= w.height) continue;
+        const neighbourKey = tileKey(w, point);
+        if (w.terrain[neighbourKey] === 'water') {
+          if (!visited[neighbourKey] && salinityAt(neighbourKey) === salinity) {
+            visited[neighbourKey] = 1;
+            queue.push(neighbourKey);
+          }
+        } else if (walkable(w, point) && !access.has(neighbourKey)) {
+          access.set(neighbourKey, { point, key: neighbourKey, waterKey: key });
+        }
       }
     }
-  return result;
+    if (access.size)
+      sources.push({
+        id: `water:${minimumKey}`,
+        salinity,
+        sourceClass: waterSourceClass(salinity),
+        accessPoints: [...access.values()],
+      });
+  }
+  sourceCache.set(w, { terrain: w.terrain, salinity: w.waterSalinity, sources });
+  return sources;
+}
+
+export function waterAccessPoints(w: World) {
+  return irrigationSources(w).flatMap((source) => source.accessPoints.map((entry) => entry.point));
 }
 
 export function nearestWaterAccess(w: World, target: Point) {
