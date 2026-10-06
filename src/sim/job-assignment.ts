@@ -10,6 +10,9 @@ import { Reservations } from './reservations';
 import { DiagnosticLog, point } from './diagnostics';
 import { foodType, freshPoints, requiresFoodSeparation } from './world';
 import { COOKING_INPUT } from './definitions';
+import { claimJobPost } from './posted-jobs';
+import { isAdult } from './health';
+import { assignCareJob } from './family';
 
 export function assignJob(
   w: World,
@@ -20,6 +23,8 @@ export function assignJob(
   retries: Map<string, number>,
   diagnostics?: DiagnosticLog,
 ) {
+  if (!isAdult(pawn)) return;
+  if (assignCareJob(w, pawn, reservations, grid)) return;
   const tier = (c: Candidate) =>
     c.work
       ? 4
@@ -160,7 +165,9 @@ export function assignJob(
       waterSourceKey: c.waterSourceKey,
       personalFoodPlan: c.personalFoodPlan || (c.kind === 'cook' && pawn.hunger < 38),
       cookTransactionId: c.kind === 'cook' ? `${pawn.id}:${c.targetId}:${w.tick}` : undefined,
+      postedJobId: c.postId,
     };
+    claimJobPost(w, c.postId, pawn.id);
     if (c.kind === 'cook') {
       const station = w.buildings.find((b) => b.id === c.targetId);
       if (station) station.reservedBy = pawn.id;
@@ -189,6 +196,7 @@ export function assignJob(
       jobType: c.kind,
       phase: pawn.job.phase,
       position: point(pawn),
+      values: { postedJobId: c.postId ?? null },
     });
     if (c.kind === 'eat')
       diagnostics?.record(w, 'FOOD_PLAN_EAT_SELECTED', {
@@ -215,6 +223,6 @@ export function assignJob(
         jobType: 'separate',
         position: point(pawn),
       });
-    return;
+    return c;
   }
 }

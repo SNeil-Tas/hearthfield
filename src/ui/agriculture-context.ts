@@ -6,9 +6,11 @@ import {
   growthSuitability,
   salinitySuitability,
   seedItems,
+  waterSourceClass,
 } from '../sim/agriculture';
 import type { Crop, Point, World } from '../sim/types';
-import { tileKey } from '../sim/world';
+import { resourceTotal, tileKey } from '../sim/world';
+import { escapeHTML } from './icons';
 
 function band(
   value: number,
@@ -45,5 +47,12 @@ export function agricultureContextHTML(w: World, point: Point, crop?: Crop) {
     })
     .join('');
   const saltSuitability = salinitySuitability(current, soil.salinity);
-  return `<span class="eyebrow">GROWING ZONE · ${current.name.toUpperCase()}</span><h3>${stageName}</h3><p>Crop: ${current.name}<br>Stage: ${stageName}${actualCrop ? `<br>Growth: ${Math.round(actualCrop.growth * 100)}%` : ''}<br>Moisture: ${Math.round(soil.moisture)} / ${band(soil.moisture, current.preferredMoisture, current.toleratedMoisture)}<br>Nutrients: ${Math.round(soil.nutrients)} / ${factors.nutrients >= 0.95 ? 'Suitable' : factors.nutrients <= 0.05 ? 'Deficient' : 'Low'}<br>Soil salinity: ${soil.salinity.toFixed(1)} / ${saltSuitability >= 0.95 ? 'Suitable' : saltSuitability <= 0.05 ? 'Stressed' : 'Marginal'}<br>Temperature: Not simulated / Suitable<br>Status: ${status}</p><div class="crop-choice">${choices}</div>`;
+  const irrigator = soil.lastWateredBy
+    ? w.pawns.find((pawn) => pawn.id === soil.lastWateredBy)?.name
+    : undefined;
+  const irrigationHistory =
+    soil.lastWateredAt === undefined
+      ? ''
+      : `<br>Last irrigation: ${waterSourceClass(soil.lastWaterSalinity ?? 0)} water${irrigator ? ` · ${escapeHTML(irrigator)}` : ''}`;
+  return `<span class="eyebrow">GROWING ZONE · ${current.name.toUpperCase()}</span><h3>${stageName}</h3><p>Crop: ${current.name}<br>Stage: ${stageName}${actualCrop ? `<br>Growth: ${Math.round(actualCrop.growth * 100)}%` : ''}<br>Moisture: ${Math.round(soil.moisture)} / ${band(soil.moisture, current.preferredMoisture, current.toleratedMoisture)}<br>Nutrients: ${Math.round(soil.nutrients)} / ${factors.nutrients >= 0.95 ? 'Suitable' : factors.nutrients <= 0.05 ? 'Deficient' : 'Low'} · ${resourceTotal(w, 'fertilizer')} fertilizer available<br>Soil salinity: ${soil.salinity.toFixed(1)} / ${saltSuitability >= 0.95 ? 'Suitable' : saltSuitability <= 0.05 ? 'Stressed' : 'Marginal'}${irrigationHistory}<br>Temperature: Not simulated / Suitable<br>Status: ${status}</p><div class="crop-choice">${choices}</div>`;
 }

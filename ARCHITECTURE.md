@@ -12,24 +12,28 @@ Pointer / DOM UI → typed Command → Simulation → plain World state → Canv
 
 Simulation modules have no browser, renderer or DOM dependencies. Rendering reads the world and never changes gameplay state. UI state, camera, time multiplier and renderer smoothing are ephemeral. The only production dependencies are browser APIs; npm packages are development/build/test tools.
 
-| Boundary         | Location                                      | Responsibility                                                                     |
-| ---------------- | --------------------------------------------- | ---------------------------------------------------------------------------------- |
-| Bootstrap        | `src/main.ts`                                 | Compose services, dispatch actions, frame loop, lifecycle and persistence          |
-| World / entities | `src/sim/types.ts`, `world.ts`, `generate.ts` | Plain state, identity, coordinates, physical stacks, seeded generation             |
-| Content          | `src/sim/definitions.ts`                      | Terrain, buildings, resource nodes, costs, yields, work and labels                 |
-| Commands         | `src/sim/commands.ts`                         | Validate player intent; cancel safely; never grant instant resources               |
-| Clock            | `src/sim/clock.ts`                            | Fixed 100 ms ticks; 0/1/2/4× independent of render rate                            |
-| Work discovery   | `src/sim/job-board.ts`                        | Shared work opportunities and urgent personal needs                                |
-| Assignment       | `src/sim/job-assignment.ts`                   | Priorities, skills, distance, reachability and atomic claims                       |
-| Execution        | `src/sim/jobs.ts`                             | Travel, carrying, harvest/work progress, delivery, consumption, completion         |
-| Needs            | `src/sim/needs.ts`                            | Hunger, rest, health effects, derived mood and interruption                        |
-| Reservations     | `src/sim/reservations.ts`                     | Atomic multi-key claims and owner-wide release                                     |
-| Navigation       | `src/sim/pathfinding.ts`                      | Four-way A*, binary heap, isolated walkability grid including loose item occupancy |
-| Events           | `src/sim/events.ts`                           | Bounded simulation event journal                                                   |
-| Camera / render  | `src/view/`                                   | Screen/world conversion, zoom, culling, original shapes, visual smoothing          |
-| Touch            | `src/input/gestures.ts`                       | Pointer tracking, thresholded taps, pan, pinch, area/line previews                 |
-| UI / selection   | `src/ui/`                                     | HUD, context, work priorities, panels, tool and selection state                    |
-| Saves            | `src/persistence/`                            | Validation, codec, database, recovery and browser writer lock                      |
+| Boundary             | Location                                         | Responsibility                                                                            |
+| -------------------- | ------------------------------------------------ | ----------------------------------------------------------------------------------------- |
+| Bootstrap            | `src/main.ts`                                    | Compose services, dispatch actions, frame loop, lifecycle and persistence                 |
+| World / entities     | `src/sim/types.ts`, `world.ts`, `generate.ts`    | Plain state, identity, coordinates, physical stacks, seeded generation                    |
+| Landscape generation | `src/sim/landscape.ts`                           | Seeded landform profiles, layered terrain noise, water chemistry, habitat-aware resources |
+| Content              | `src/sim/definitions.ts`                         | Terrain, buildings, resource nodes, costs, yields, work and labels                        |
+| Commands             | `src/sim/commands.ts`                            | Validate player intent; cancel safely; never grant instant resources                      |
+| Clock                | `src/sim/clock.ts`                               | Fixed 100 ms ticks; 0/1/2/4× independent of render rate                                   |
+| Work discovery       | `src/sim/job-board.ts`, `src/sim/posted-jobs.ts` | Work opportunities, personal needs, and persistent colonist-posted handoffs               |
+| Wildlife ecology     | `src/sim/ecology.ts`                             | Lifecycle, forage, predation, predator encounters, reproduction and migration             |
+| Assignment           | `src/sim/job-assignment.ts`                      | Priorities, skills, distance, reachability and atomic claims                              |
+| Execution            | `src/sim/jobs.ts`                                | Travel, carrying, harvest/work progress, delivery, consumption, completion                |
+| Needs                | `src/sim/needs.ts`                               | Hunger, rest, health effects, derived mood and interruption                               |
+| Relationships        | `src/sim/relationships.ts`                       | Directed opinions, familiarity, nearby encounters and social mood effects                 |
+| Colonist health      | `src/sim/health.ts`                              | Aging, occupational/predator injuries, healing, impairment, lifespan and death            |
+| Reservations         | `src/sim/reservations.ts`                        | Atomic multi-key claims and owner-wide release                                            |
+| Navigation           | `src/sim/pathfinding.ts`                         | Four-way A*, binary heap, isolated walkability grid including loose item occupancy        |
+| Events               | `src/sim/events.ts`                              | Bounded simulation event journal                                                          |
+| Camera / render      | `src/view/`                                      | Screen/world conversion, zoom, culling, original shapes, visual smoothing                 |
+| Touch                | `src/input/gestures.ts`                          | Pointer tracking, thresholded taps, pan, pinch, area/line previews                        |
+| UI / selection       | `src/ui/`                                        | HUD, context, work priorities, panels, tool and selection state                           |
+| Saves                | `src/persistence/`                               | Validation, codec, database, recovery and browser writer lock                             |
 
 ## Time and execution
 
@@ -37,7 +41,7 @@ The simulation advances at **10 Hz**. Movement updates each tick; needs, spoilag
 
 The frame accumulator caps elapsed time at 250 ms to avoid catch-up spirals. At 4× this is at most ten ticks per render. Long stalls therefore slow simulated time rather than triggering an unbounded catch-up. Hidden documents do not advance simulation. Renderer-only exponential smoothing makes 10 Hz pawn movement visually continuous; it never determines positions, arrival or work completion.
 
-Generation uses an explicit seed and a small deterministic PRNG. Subsequent simulation ticks do not call wall-clock time or random functions. The same initial world and tick-ordered commands yield the same state. `savedAt` is persistence metadata, not a simulation input.
+Generation uses an explicit seed and a small deterministic PRNG. A seed selects one of five constrained landform families, then layered value noise supplies local variation. Water geometry and salinity are coherent with the selected landform, while a protected central clearing, freshwater access and starter resources keep every opening playable. Natural resources use terrain-sensitive placement probabilities. Subsequent simulation ticks do not call wall-clock time or random functions. The same initial world and tick-ordered commands yield the same state. `savedAt` is persistence metadata, not a simulation input.
 
 ## Work and physical logistics
 
@@ -78,7 +82,7 @@ DOM panels use safe-area insets and 44 px action targets. Work/settings/journal 
 
 ## Persistence and migration
 
-Save envelope version **7** contains a millisecond timestamp, JSON payload and FNV integrity checksum. The checksum detects accidental corruption; it is not an authentication mechanism. World validation rejects unknown definitions, invalid quantities/coordinates/needs, duplicate identities and invalid ID sequences before state reaches gameplay.
+Save envelope version **8** contains a millisecond timestamp, JSON payload and FNV integrity checksum. The checksum detects accidental corruption; it is not an authentication mechanism. World validation rejects unknown definitions, invalid quantities/coordinates/needs, duplicate identities and invalid ID sequences before state reaches gameplay.
 
 IndexedDB database `hearthfield`, schema 1, contains `saves/latest` and `saves/backup`. Both writes occur in one transaction; queued snapshots preserve local write ordering. Page hide also writes a best-effort synchronous recovery envelope to localStorage. Resume validates all candidates and picks the newest valid timestamp. Complete read failure never silently overwrites the original data.
 
@@ -102,8 +106,10 @@ Rooms and roofs are derived runtime state owned by `roomTopology(world)`. Comple
 
 Weather/exposure is centralised in `src/sim/weather.ts`: seeded weighted Clear/Rain/Heavy rain/Storm periods, roof-authoritative rain exposure, and persistent pawn wetness updated once per second. Existing rain food/field-work effects use its queries; wetness contributes a small mood effect. See [weather](docs/weather.md) for rates, transitions, save defaults and limits.
 
-Save envelopes are version 7. Loading versions 1–6 adds safe agriculture, weather, food-expiry, mood/productivity, food-point, Dump-zone, Knowledge, freshwater and clean-soil defaults before normal validation. Missing wetness defaults to dry and missing weather start time defaults to load tick. Job state remains ephemeral across loading, so reservations and carried ingredients are reconstructed safely.
+Save envelopes are version 8. Loading versions 1–7 adds safe agriculture, weather, food-expiry, mood/productivity, food-point, Dump-zone, Knowledge, freshwater, clean-soil and relationship defaults before normal validation. Missing wetness defaults to dry and missing weather start time defaults to load tick. Job state remains ephemeral across loading, so reservations and carried ingredients are reconstructed safely.
 
 Raw food items retain a physical stack with fractional `freshPoints` and `spoiledPoints`; meals remain whole items worth 80 points. Cooking stations own a transient `ingredientFresh` buffer and `cookingProgress` while reserved by one pawn. Interrupted cooking refunds buffered fresh points as physical food. More than 10 spoiled points are separated into expiry-tracked physical `waste` items capped at 30, traversable like other resources. Dump zones are persistent tile designations. Spoilage uses indoor shelter, exposed weather, and a bounded 8-neighbour waste-contamination multiplier.
+
+Waste expiry also drives composting without a separate workstation or job type. On each decay pass, expired cohorts are removed and totaled per Dump tile; every complete 30 points drops one physical `fertilizer` there, while the sub-threshold remainder decays. Existing hauling places waste in Dump zones and the existing fertilizing job retrieves fertilizer for nutrient-poor growing zones. The feature adds no persistent fields and requires no save-schema revision.
 
 In v0.5.3, assignment compares semantic self-care tiers before numeric scores: prepared meal, eligible emergency food, personal food preparation, rest, ordinary work. Reservations and paths are checked before assignment; all food candidates can be checked even when the two-attempt ordinary-work budget is exhausted. Personal recipe admission counts reachable, unreserved fresh ingredients. Required separation runs at the source inside the cooking job; general separation is Haul work. Cooking claims the station at assignment and a personal cook transitions synchronously to an eat job holding its exact output's reservation. Critical hunger (<20) checks for a ready meal even during cooking/separation; interruption refunds the station buffer and cargo before claiming that meal. No schema change or item relocation is required.

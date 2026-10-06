@@ -13,6 +13,7 @@ import { roomTopology } from './topology';
 import { isRainExposed, precipitationIntensity } from './weather';
 import { distance, nextId, sameTile, tileKey, walkable } from './world';
 import type { DiagnosticLog } from './diagnostics';
+import { emit } from './events';
 
 export interface CropDefinition {
   id: CropType;
@@ -118,6 +119,8 @@ export interface IrrigationPerception {
 }
 
 const clamp = (value: number, min = 0, max = 100) => Math.max(min, Math.min(max, value));
+const salinityNotices = new WeakMap<World, Set<string>>();
+const lastSalinityNotice = new WeakMap<World, number>();
 
 export function cropStage(growth: number): CropStage {
   if (growth >= 1) return 'mature';
@@ -249,6 +252,31 @@ export function advanceAgriculture(w: World, elapsedTicks: number, diagnostics?:
     const def = CROPS[crop.kind];
     const previousStage = cropStage(crop.growth);
     const suitability = growthSuitability(def, soil);
+    const salinityIsLimiting =
+      suitability.salinity < 0.65 &&
+      suitability.salinity <= suitability.moisture &&
+      suitability.salinity <= suitability.nutrients &&
+      suitability.salinity <= suitability.temperature;
+    const noticed = salinityNotices.get(w) ?? new Set<string>();
+    salinityNotices.set(w, noticed);
+    if (salinityIsLimiting && !noticed.has(crop.id)) {
+      if (w.tick - (lastSalinityNotice.get(w) ?? -Infinity) >= 100) {
+        noticed.add(crop.id);
+        lastSalinityNotice.set(w, w.tick);
+        emit(w, `Soil salinity is slowing a ${def.name.toLowerCase()} field.`, 'warning');
+        diagnostics?.record(w, 'CROP_SALINITY_NOTICE', {
+          targetId: crop.id,
+          position: p,
+          values: {
+            salinity: soil.salinity,
+            salinitySuitability: suitability.salinity,
+            effectiveSuitability: suitability.effective,
+          },
+        });
+      }
+    } else if (!salinityIsLimiting) {
+      noticed.delete(crop.id);
+    }
     const delta = (elapsedTicks / def.growthTicks) * suitability.effective;
     if (delta > 0) {
       crop.growth = clamp(crop.growth + delta, 0, 1);
@@ -384,6 +412,8 @@ export function applyWatering(
     const salinityBefore = soil.salinity;
     applyWaterToSoil(soil, WATERING_AMOUNT, waterSalinity);
     soil.lastWateredAt = w.tick;
+    soil.lastWateredBy = pawnId;
+    soil.lastWaterSalinity = waterSalinity;
     watered++;
     diagnostics?.record(w, 'CROP_WATERED', {
       entityId: pawnId,

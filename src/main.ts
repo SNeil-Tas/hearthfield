@@ -117,7 +117,7 @@ async function bootstrap() {
   const debugMetadata = () => ({
     appVersion: APP_VERSION,
     buildId: BUILD_ID,
-    saveSchema: 7,
+    saveSchema: 9,
     userAgent: navigator.userAgent,
     viewport: `${window.innerWidth}×${window.innerHeight}`,
     dpr: window.devicePixelRatio || 1,
@@ -449,7 +449,7 @@ async function bootstrap() {
       metrics.activeJobs = sim.world.pawns.filter((p) => !!p.job).length;
       metrics.viewport = `${window.innerWidth}×${window.innerHeight}`;
       metrics.dpr = window.devicePixelRatio || 1;
-      renderer.draw(sim.world, ui, (now - lastFrame) / 1000, clock.speed === 0);
+      renderer.draw(sim.world, ui, (now - lastFrame) / 1000, clock.speed === 0, sim.feedback);
       if (now - lastUI > 200) {
         refresh();
         lastUI = now;

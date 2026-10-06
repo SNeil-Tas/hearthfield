@@ -1,11 +1,14 @@
 import { BUILDINGS, NODES, TERRAIN } from '../sim/definitions';
 import { formatResourcePoints } from '../ui/format';
-import type { BuildingKind, Point, World } from '../sim/types';
+import type { AnimalSpecies, BuildingKind, Point, World } from '../sim/types';
 import type { UIState } from '../ui/state';
 import { Camera } from './camera';
 import { roomTopology } from '../sim/topology';
 import { precipitationIntensity } from '../sim/weather';
 import { waterSalinityAt, waterSourceClass } from '../sim/agriculture';
+import type { WorldFeedback } from '../sim/simulation';
+import { ANIMALS, animalStage } from '../sim/ecology';
+import { agingProgress, lifeStageScale, isAdult } from '../sim/health';
 
 // Warm earth tone signals recognised indoor ground; entities and zones draw above it.
 const INDOOR_FLOOR_COLOR = '#b0a184';
@@ -13,6 +16,7 @@ const INDOOR_FLOOR_COLOR = '#b0a184';
 export class Renderer {
   private ctx: CanvasRenderingContext2D;
   private visualPawns = new Map<string, Point>();
+  private visualAnimals = new Map<string, Point>();
   private rainTime = 0;
   constructor(
     private canvas: HTMLCanvasElement,
@@ -31,7 +35,13 @@ export class Renderer {
     this.canvas.height = Math.round(rect.height * dpr);
     this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
-  draw(w: World, ui: UIState, elapsed = 1 / 60, paused = false) {
+  draw(
+    w: World,
+    ui: UIState,
+    elapsed = 1 / 60,
+    paused = false,
+    feedback: readonly WorldFeedback[] = [],
+  ) {
     const c = this.ctx,
       cam = this.camera,
       z = cam.zoom,
@@ -214,6 +224,18 @@ export class Renderer {
           this.ellipse(p.x, p.y, z * 0.25, z * 0.2);
           c.fillStyle = '#b38a62';
           c.fillRect(p.x - z * 0.12, p.y - z * 0.08, z * 0.24, z * 0.16);
+        } else if (item.resource === 'fertilizer') {
+          c.fillStyle = '#806b4e';
+          this.ellipse(p.x, p.y + z * 0.03, z * 0.27, z * 0.19);
+          c.strokeStyle = '#b4c98d';
+          c.lineWidth = Math.max(1.5, z * 0.06);
+          c.beginPath();
+          c.moveTo(p.x, p.y);
+          c.lineTo(p.x, p.y - z * 0.24);
+          c.stroke();
+          c.fillStyle = '#9eb67c';
+          this.ellipse(p.x - z * 0.08, p.y - z * 0.18, z * 0.1, z * 0.06);
+          this.ellipse(p.x + z * 0.08, p.y - z * 0.23, z * 0.1, z * 0.06);
         } else {
           c.fillStyle = '#b6b8a9';
           this.ellipse(p.x, p.y, z * 0.25, z * 0.17);
@@ -313,6 +335,37 @@ export class Renderer {
           c.stroke();
           c.setLineDash([]);
         }
+    for (const animal of w.animals)
+      if (visible(animal)) {
+        const previous = this.visualAnimals.get(animal.id) ?? animal;
+        const blend =
+          paused || Math.hypot(previous.x - animal.x, previous.y - animal.y) > 3
+            ? 1
+            : 1 - Math.exp(-Math.max(0, elapsed) * 12);
+        const position = {
+          x: previous.x + (animal.x - previous.x) * blend,
+          y: previous.y + (animal.y - previous.y) * blend,
+        };
+        this.visualAnimals.set(animal.id, position);
+        const p = cam.screen(position);
+        if (ui.selectedId === animal.id) {
+          c.strokeStyle = '#fff1c9';
+          c.lineWidth = 2;
+          c.beginPath();
+          c.ellipse(p.x, p.y + z * 0.1, z * 0.48, z * 0.3, 0, 0, Math.PI * 2);
+          c.stroke();
+        }
+        this.animal(animal.species, p, z, animalStage(animal) === 'juvenile' ? 0.72 : 1);
+        if (ui.selectedId === animal.id || ui.debug) {
+          c.textAlign = 'center';
+          c.font = `600 ${Math.max(9, z * 0.27)}px system-ui`;
+          c.fillStyle = '#f7edd2';
+          c.strokeStyle = '#334c39';
+          c.lineWidth = 3;
+          c.strokeText(ANIMALS[animal.species].name, p.x, p.y + z * 0.62);
+          c.fillText(ANIMALS[animal.species].name, p.x, p.y + z * 0.62);
+        }
+      }
     for (const pawn of w.pawns)
       if (visible(pawn)) {
         const previous = this.visualPawns.get(pawn.id) ?? pawn;
@@ -335,14 +388,21 @@ export class Renderer {
           c.ellipse(p.x, p.y + z * 0.15, z * 0.4, z * 0.24, 0, 0, Math.PI * 2);
           c.stroke();
         }
+        const size = z * lifeStageScale(pawn);
+        const aging = agingProgress(pawn);
+        const stoop = size * aging * 0.12;
         c.fillStyle = pawn.color;
-        this.ellipse(p.x, p.y + z * 0.05, z * 0.21, z * 0.27);
+        this.ellipse(p.x, p.y + size * 0.05, size * 0.21, size * (0.27 - aging * 0.05));
         c.fillStyle = '#e6c6a1';
-        this.circle(p.x, p.y - z * 0.22, z * 0.16);
-        c.fillStyle = '#514b3d';
+        this.circle(p.x + stoop, p.y - size * 0.22 + stoop, size * 0.16);
+        c.fillStyle = `rgb(${Math.round(81 + aging * 133)}, ${Math.round(75 + aging * 139)}, ${Math.round(61 + aging * 146)})`;
         c.beginPath();
-        c.arc(p.x, p.y - z * 0.26, z * 0.16, Math.PI, Math.PI * 2);
+        c.arc(p.x + stoop, p.y - size * 0.26 + stoop, size * 0.16, Math.PI, Math.PI * 2);
         c.fill();
+        if (pawn.pregnancy || (!isAdult(pawn) && (pawn.care < 30 || !topology.isIndoors(pawn)))) {
+          c.fillStyle = pawn.pregnancy ? '#e8a9bc' : '#efb760';
+          this.circle(p.x + z * 0.28, p.y - size * 0.28, z * 0.07);
+        }
         if (pawn.carrying) {
           c.fillStyle = pawn.carrying.resource === 'wood' ? '#be8c57' : '#e2b76e';
           c.fillRect(p.x + z * 0.09, p.y - 2, z * 0.21, z * 0.21);
@@ -357,6 +417,29 @@ export class Renderer {
         c.strokeText(label, p.x, p.y + z * 0.68);
         c.fillText(label, p.x, p.y + z * 0.68);
       }
+    for (const thought of feedback) {
+      const pawn = w.pawns.find((candidate) => candidate.id === thought.entityId);
+      if (!pawn || !visible(pawn)) continue;
+      const position = this.visualPawns.get(pawn.id) ?? pawn;
+      const p = cam.screen(position);
+      const fontSize = Math.max(11, Math.min(14, z * 0.34));
+      const width = thought.text.length * fontSize * 0.56 + 16;
+      const height = fontSize + 10;
+      const x = p.x - width / 2;
+      const y = p.y - z * 0.82 - height;
+      c.fillStyle = '#fff8e8e8';
+      c.fillRect(x, y, width, height);
+      c.fillStyle = '#fff8e8e8';
+      c.beginPath();
+      c.moveTo(p.x - 4, y + height);
+      c.lineTo(p.x + 4, y + height);
+      c.lineTo(p.x, y + height + 6);
+      c.fill();
+      c.fillStyle = '#2d3d32';
+      c.font = `600 ${fontSize}px system-ui`;
+      c.textAlign = 'center';
+      c.fillText(thought.text, p.x, y + fontSize + 3);
+    }
     const selected = [...w.nodes, ...w.items, ...w.buildings, ...w.blueprints].find(
       (e) => e.id === ui.selectedId,
     );
@@ -382,6 +465,59 @@ export class Renderer {
     this.ctx.beginPath();
     this.ctx.ellipse(x, y, rx, ry, 0, 0, Math.PI * 2);
     this.ctx.fill();
+  }
+  private animal(species: AnimalSpecies, p: Point, z: number, lifeScale: number) {
+    const c = this.ctx;
+    const def = ANIMALS[species];
+    const speciesScale = species === 'bison' ? 1.18 : species === 'rabbit' ? 0.7 : 1;
+    const s = lifeScale * speciesScale;
+    c.fillStyle = '#20372745';
+    this.ellipse(p.x + z * 0.05, p.y + z * 0.23, z * 0.34 * s, z * 0.11 * s);
+    c.fillStyle = def.color;
+    this.ellipse(p.x, p.y + z * 0.03, z * 0.31 * s, z * 0.19 * s);
+    const facing = species === 'fox' || species === 'wolf' ? 1 : -1;
+    c.fillStyle = def.accent;
+    this.circle(p.x + facing * z * 0.27 * s, p.y - z * 0.08 * s, z * 0.12 * s);
+    c.strokeStyle = def.color;
+    c.lineWidth = Math.max(1, z * 0.055 * s);
+    c.beginPath();
+    c.moveTo(p.x - z * 0.16 * s, p.y + z * 0.14 * s);
+    c.lineTo(p.x - z * 0.17 * s, p.y + z * 0.31 * s);
+    c.moveTo(p.x + z * 0.16 * s, p.y + z * 0.14 * s);
+    c.lineTo(p.x + z * 0.17 * s, p.y + z * 0.31 * s);
+    c.stroke();
+    if (species === 'rabbit') {
+      c.strokeStyle = def.accent;
+      c.lineWidth = z * 0.07 * s;
+      c.beginPath();
+      c.moveTo(p.x - z * 0.2 * s, p.y - z * 0.14 * s);
+      c.lineTo(p.x - z * 0.24 * s, p.y - z * 0.39 * s);
+      c.moveTo(p.x - z * 0.12 * s, p.y - z * 0.14 * s);
+      c.lineTo(p.x - z * 0.1 * s, p.y - z * 0.4 * s);
+      c.stroke();
+    } else if (species === 'deer') {
+      c.strokeStyle = '#d9c69b';
+      c.lineWidth = Math.max(1, z * 0.035 * s);
+      c.beginPath();
+      c.moveTo(p.x - z * 0.27 * s, p.y - z * 0.17 * s);
+      c.lineTo(p.x - z * 0.38 * s, p.y - z * 0.36 * s);
+      c.moveTo(p.x - z * 0.38 * s, p.y - z * 0.3 * s);
+      c.lineTo(p.x - z * 0.47 * s, p.y - z * 0.34 * s);
+      c.stroke();
+    } else if (species === 'boar') {
+      c.fillStyle = '#e5d7b5';
+      this.circle(p.x - z * 0.34 * s, p.y, z * 0.035 * s);
+    } else if (species === 'bison') {
+      c.fillStyle = '#403329';
+      this.ellipse(p.x - z * 0.17 * s, p.y - z * 0.06 * s, z * 0.2 * s, z * 0.22 * s);
+    } else {
+      c.fillStyle = def.accent;
+      c.beginPath();
+      c.moveTo(p.x - facing * z * 0.27 * s, p.y);
+      c.lineTo(p.x - facing * z * 0.52 * s, p.y - z * 0.09 * s);
+      c.lineTo(p.x - facing * z * 0.43 * s, p.y + z * 0.1 * s);
+      c.fill();
+    }
   }
   private building(kind: BuildingKind, p: Point, z: number) {
     const c = this.ctx;

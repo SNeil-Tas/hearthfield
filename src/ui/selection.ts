@@ -8,6 +8,7 @@ export function selectAt(w: World, p: Point) {
     w.buildings.find((e) => hit(e)) ??
     w.nodes.find((e) => hit(e)) ??
     w.items.find((e) => hit(e)) ??
-    w.crops.find((e) => hit(e))
+    w.crops.find((e) => hit(e)) ??
+    w.animals.find((e) => hit(e, 0.65))
   );
 }

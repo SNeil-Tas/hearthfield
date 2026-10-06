@@ -1,10 +1,16 @@
 # Hearthfield · Colony Sim
 
-A phone-first browser colony simulation. Three autonomous settlers gather resources, carry supplies, build your plans, eat, and sleep in a procedural 80 × 80 woodland. **Hearthfield is a provisional working title**, not a commitment to the final setting.
+A phone-first browser colony simulation. Fifteen autonomous settlers gather resources, carry supplies, build your plans, eat, and sleep in a procedural 80 × 80 landscape. **Hearthfield is a provisional working title**, not a commitment to the final setting.
 
 The original [GDD](mobile_colony_sim_gdd_v0.1.md) remains authoritative. This implementation focuses on the first playable logistics loop. All visuals are original Canvas shapes and SVG icons. There are no external fonts, art downloads, runtime frameworks, accounts, or services.
 
-In v0.9, Agriculture Knowledge is separate from Plants skill. Colonists deterministically judge fresh, ambiguous brackish, and obvious saltwater irrigation sources; the selected water's objective salinity persists in soil and affects crop growth through the ordinary agriculture model.
+In v0.14, Dump zones close the renewable soil-fertility loop. Haulers bring spoiled food and waste to designated tiles; when that waste expires, every full 30 points on a Dump tile becomes one physical fertilizer and any smaller remainder decays. Existing fertilizing work then carries that fertilizer to nutrient-poor growing zones. This reuses the current physical items, expiry cohorts, hauling, and field work without changing the save schema.
+
+In v0.13, every new colony receives one of five deterministic landforms: a river valley, twin lakes, marsh edge, highland creek, or wooded basin. Layered terrain noise varies ridges, soil, fertile ground, woodland, and resource clusters within each family. Generation protects a viable starting clearing, nearby supplies, accessible freshwater, and a mix of brackish habitats. The HUD names the current landscape and the Wildlife screen explains its character.
+
+Rabbits, deer, wild boars, bison, foxes, and wolves form a wilderness ecology. Animals graze regenerating terrain forage, roam, flee, hunt, reproduce, mature, grow old, die, and migrate when a local population becomes too sparse. Hungry adult foxes and wolves can stalk and attack nearby colonists. Colonists automatically strike back when attacked, but their bare-handed damage is very low. Wildlife still does not consume colony food, damage crops, enter work, or block navigation.
+
+Colonists also form directed relationships through periodic encounters while they are near one another. Familiarity and opinion can develop into friendship, close friendship, or rivalry; established bonds contribute a bounded social effect to mood and appear in each colonist's inspector.
 
 ![Landscape prototype](docs/mobile-colony.png)
 
@@ -53,11 +59,15 @@ Saves belong to the **browser profile and origin**, including port. A LAN addres
 - **Architect:** tap for a bed/door, drag a wall line, or drag a stockpile rectangle. Plans require delivered wood before construction begins.
 - **Done** exits the tool. One finger pans in inspect mode; two fingers pan and pinch in any mode. Mouse dragging and wheel zoom work on desktop.
 - Tap an object for information and context actions. Tap a colonist portrait to select and focus them.
-- **Work:** tap a priority to cycle **1 → 2 → 3 → 4 → off**. Skill is shown below. Eating and resting override normal work.
+- A selected colonist's Relationships section shows how well they know each settler and their current opinion. Relationships develop autonomously when colonists spend time near one another.
+- Tap a wild animal to inspect its species, age, health, energy, current behaviour, and any target it is tracking. **More → Wildlife** summarizes all six populations and warns about predator encounters.
+- **Work:** tap a priority to cycle **1 → 2 → 3 → 4 → off**. Skill is shown below. The shared board lists work noticed and posted by busy colonists, including its current claimant. Eating and resting override normal work.
 - **Orders → Cancel plans:** remove tree orders, unfinished blueprints, or stockpile cells. Delivered and carried materials are retained. Completed structures can be deconstructed from their context panel.
 - Use **pause / 1× / 2× / 4×** freely. Management screens do not automatically pause the colony.
+- Follow the **Next step** card for a gentle settlement arc. Tap it to see the full colony-goal roadmap; goals never expire and completed milestones persist in the save.
 - **Architect → Growing zone:** drag over soil or fertile ground. Colonists with Gather/Plants work enabled sow grain, tend it, harvest mature crops, and create physical raw food.
 - **Architect → Cooking station:** place and build one with delivered wood. A cook uses 100 raw food points to make one physical meal; hungry colonists prefer meals and restore more hunger from them.
+- **Architect → Dump zone:** designate ground for spoiled food and waste. Every 30 waste points that finish decaying on a Dump tile produce one physical fertilizer; a smaller expired remainder simply decays. Colonists already know how to haul the waste and apply the fertilizer to depleted fields.
 - Select a completed wall, door, bed, or cooking station and choose **Deconstruct**. A builder works on it and returns 60% of its wood as a physical stack.
 
 Resource totals count items on the ground plus carried items. The player-facing Food total counts fresh raw points and cooked meals, excluding spoiled portions and waste; diagnostics retain raw quantities. Delivered construction material is committed to its blueprint and no longer included in those totals. No material is deducted when a blueprint is placed. Leave doorways through walls so colonists can reach food and work.
@@ -89,7 +99,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md), [DECISIONS.md](DECISIONS.md), [IMPLEMENT
 
 In development, `window.colonyDebug` exposes the simulation, camera, clock, UI state, `step(count)`, and `save()`. Pause first when stepping manually. **More → Diagnostics** shows job paths, tick, reservation count, entity IDs, positions and selected-target ownership. This debug console API is omitted from production.
 
-The prototype intentionally has no combat, raids, medicine, roof/temperature simulation, death, audio, or cloud saves yet. Farming, cooking, shelter, physical logistics, navigation, activity metabolism and construction are live systems rather than scripted animations.
+The prototype intentionally has no drafted combat, weapons, raids, medicine, roof/temperature simulation, audio, or cloud saves yet. Colonists now age, suffer and recover from work or predator injuries, slow down while injured, and can die from starvation, injuries, or old age; replacement colonists are not implemented yet. Predator defence is automatic and deliberately weak while unarmed. Farming, cooking, shelter, physical logistics, navigation, activity metabolism and construction are live systems rather than scripted animations.
 
 ### v0.5.3 self-care and traversal
 
@@ -103,10 +113,13 @@ Food remains physical and stack-capped at 100 points. Colonists carry up to 100 
 
 Food is measured in points. Raw stacks cap at 100 total points and track fractional fresh/spoiled points separately; more than 10 spoiled points require physical separation into spoiled-food stacks capped at 30. Waste is walkable and doubles spoilage for fresh food in an 8-neighbour ring. Indoor storage slows spoilage, while rain worsens exposed food. Meals use 100 fresh raw points and provide 80 hunger points.
 
-Hungry colonists reserve a cooking station for personal self-care, collect ingredients over multiple trips when necessary, and eat the resulting meal immediately. Cooking skill affects preparation speed, while Cook priority is not required for survival cooking. Save schema 5 migrates older food stacks, preserves fractional points, and adds Dump zones and spoiled-food expiry cohorts. Spoilage above 10 points requires physical separation; composting is intentionally deferred.
+Hungry colonists reserve a cooking station for personal self-care, collect ingredients over multiple trips when necessary, and eat the resulting meal immediately. Cooking skill affects preparation speed, while Cook priority is not required for survival cooking. Save schema 5 migrates older food stacks, preserves fractional points, and adds Dump zones and spoiled-food expiry cohorts. Spoilage above 10 points requires physical separation. As of v0.14, expired waste on Dump tiles yields one physical fertilizer per full 30 points, while sub-threshold remainders decay; this adds no new save schema.
 
 ## Diagnostics
 
 Hearthfield v0.5.2 keeps a separate runtime diagnostic trace with a 5,000-event ring buffer. It is intentionally not part of normal colony saves, so save files remain compact; the trace resets when the app restarts or a save is loaded. Events are transition/action based rather than per-tick or per-movement.
 
 Open More → Diagnostics to mark a moment and export a self-contained JSON report. Supported Android browsers/PWA installs use the Web Share API for file sharing; otherwise the report downloads normally. When a colonist is selected, Copy Selected Colonist Debug copies a concise state snapshot to the clipboard.
+
+
+Families and aging: new colonies begin with 15 adults and 240 food. Compatible adult close friends can become romantic partners. Female/male couples can conceive, with a 45-day pregnancy and a one-year recovery interval after birth. A game year remains 60 days. Life stages are infancy (0–1), early childhood (2–9), pubescence (10–13), post-pubescence (14–17), and adulthood (18+). Children do not work; adults fetch food, provide care, and carry or accompany children into reachable enclosed, roofed rooms. Neglect and exposure reduce child health. The colonist inspector shows care, shelter, family, and pregnancy status. Aging progressively greys hair, changes posture, and reduces work and movement starting at 55. Each colonist stores an aging onset for future life-event influences. Save schema 9 preserves these fields and migrates older saves without adding settlers to existing colonies.

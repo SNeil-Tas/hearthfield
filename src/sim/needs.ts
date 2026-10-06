@@ -1,6 +1,9 @@
 import type { Pawn, World, ActivityKind } from './types';
 import { distance } from './world';
 import { wetnessMoodPenalty } from './weather';
+import { agingWorkMultiplier, injuryWorkMultiplier, isAdult } from './health';
+import { roomTopology } from './topology';
+import { relationshipMoodEffect } from './relationships';
 const costs: Record<ActivityKind, [number, number]> = {
   sleeping: [0.22, 0],
   resting: [0.32, 0.05],
@@ -27,17 +30,25 @@ export function updateNeeds(w: World, pawn: Pawn) {
   const ill = pawn.illnessUntil !== undefined && pawn.illnessUntil > w.tick;
   pawn.activity = activity;
   const moodMetabolism = pawn.mood < 30 ? 1.22 : pawn.mood < 60 ? 1.1 : 1;
-  pawn.productivity = Math.max(
-    0.55,
-    (pawn.mood < 30 ? 0.8 : pawn.mood < 60 ? 0.9 : 1) *
-      (pawn.rest < 30 ? 0.78 : pawn.rest < 55 ? 0.92 : 1) *
-      (ill ? 0.78 : 1) *
-      (pawn.hunger < 35 ? 0.9 : 1),
-  );
+  pawn.productivity =
+    agingWorkMultiplier(pawn) *
+    Math.max(
+      0.55,
+      (pawn.mood < 30 ? 0.8 : pawn.mood < 60 ? 0.9 : 1) *
+        (pawn.rest < 30 ? 0.78 : pawn.rest < 55 ? 0.92 : 1) *
+        (ill ? 0.78 : 1) *
+        injuryWorkMultiplier(pawn) *
+        (pawn.hunger < 35 ? 0.9 : 1),
+    );
   pawn.hunger = Math.max(0, pawn.hunger - hungerCost * 0.1 * moodMetabolism);
   if (activity !== 'sleeping') pawn.rest = Math.max(0, pawn.rest - restCost * 0.1);
-  if (pawn.hunger <= 0) pawn.health = Math.max(1, pawn.health - 0.25);
-  else if (pawn.hunger > 55 && pawn.rest > 50) pawn.health = Math.min(100, pawn.health + 0.08);
+  if (pawn.hunger <= 0) pawn.health = Math.max(0, pawn.health - 0.25);
+  else if (
+    pawn.hunger > 55 &&
+    pawn.rest > 50 &&
+    (isAdult(pawn) || (pawn.care >= 20 && roomTopology(w).isIndoors(pawn)))
+  )
+    pawn.health = Math.min(100, pawn.health + 0.08);
   const nearbyRot = w.items
     .filter((item) => item.resource === 'waste' && distance(item, pawn) <= 5)
     .reduce((total, item) => total + item.quantity, 0);
@@ -59,6 +70,7 @@ export function updateNeeds(w: World, pawn: Pawn) {
           (pawn.moodBias ?? 0) +
           exposurePenalty +
           handledPenalty +
+          relationshipMoodEffect(pawn) +
           wetnessMoodPenalty(pawn) +
           (ill ? -8 : 0),
       ),

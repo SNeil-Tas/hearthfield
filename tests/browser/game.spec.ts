@@ -2,10 +2,58 @@ import { expect, test, type Page } from '@playwright/test';
 
 async function start(page: Page) {
   await page.goto('/');
-  await expect(page.locator('.colonist')).toHaveCount(3);
+  await expect(page.locator('.colonist')).toHaveCount(15);
   await page.getByRole('button', { name: 'Dismiss getting started' }).click();
   await page.getByRole('button', { name: 'Pause simulation' }).click();
 }
+test('family inspector shows pregnancy, childhood dependency, and progressive aging', async ({
+  page,
+}) => {
+  await start(page);
+  await page.setViewportSize({ width: 1200, height: 800 });
+  await expect(page.locator('#resource-food')).toBeInViewport();
+  await page.getByRole('button', { name: 'Select Remy', exact: true }).click();
+  await expect(page.locator('.context h3')).toHaveText('Remy');
+  await page.evaluate(async () => {
+    const d = (window as any).colonyDebug,
+      w = d.simulation.world;
+    const healthPath = '/src/sim/health.ts';
+    const { YEAR_TICKS } = await import(healthPath);
+    const [adult, mother, child, elder] = w.pawns;
+    adult.partnerId = mother.id;
+    mother.partnerId = adult.id;
+    mother.pregnancy = { partnerId: adult.id, conceivedAt: w.tick, dueAt: w.tick + 270000 };
+    child.ageTicks = 0;
+    child.parentIds = child.ancestorIds = [adult.id, mother.id];
+    child.care = 15;
+    child.caregiverId = mother.id;
+    elder.ageTicks = 85 * YEAR_TICKS;
+    d.ui.selectedId = mother.id;
+    d.camera.x = 40;
+    d.camera.y = 39;
+  });
+  await expect(page.locator('.context')).toContainText('Romantic partner');
+  await expect(page.locator('.context')).toContainText('Expecting a baby · due in 45 days');
+  await page.screenshot({ path: 'test-results/family-pregnancy.png' });
+  await page.getByRole('button', { name: 'Select Kit', exact: true }).click();
+  await expect(page.locator('.context')).toContainText('Infancy');
+  await expect(page.locator('.context')).toContainText('Needs shelter and adult care until age 18');
+  await expect(page.locator('.context')).toContainText('Shelter: Needed · Caregiver: Ada');
+  await expect(page.locator('.need').filter({ hasText: 'Care' }).locator('meter')).toHaveAttribute(
+    'value',
+    '15',
+  );
+  await page.screenshot({ path: 'test-results/family-child.png' });
+  await page.getByRole('button', { name: 'Select Mira', exact: true }).click();
+  await expect(page.locator('.context')).toContainText('Age: 85');
+  await expect(page.locator('.context')).toContainText(
+    'Aging begins at 55 · age-related work 61% · movement 70%',
+  );
+  await page.screenshot({ path: 'test-results/family-aging.png' });
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
+  await page.screenshot({ path: 'test-results/family-mobile.png' });
+});
 test('mobile weather and wetness feedback follows exposure and drying', async ({ page }) => {
   await start(page);
   await page.setViewportSize({ width: 667, height: 375 });
@@ -170,7 +218,7 @@ test('landscape play, management, placement, save/reload and narrow resize', asy
   await page.evaluate(async () => (window as any).colonyDebug.save(true, true));
   const seed = await page.evaluate(() => (window as any).colonyDebug.simulation.world.seed);
   await page.reload();
-  await expect(page.locator('.colonist')).toHaveCount(3);
+  await expect(page.locator('.colonist')).toHaveCount(15);
   expect(await page.evaluate(() => (window as any).colonyDebug.simulation.world.seed)).toBe(seed);
   expect(
     await page.evaluate(() => (window as any).colonyDebug.simulation.world.buildings.length),
@@ -297,7 +345,7 @@ test('production PWA caches shell and resumes local colony fully offline', async
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
   await page.goto('http://127.0.0.1:4187/');
-  await expect(page.locator('.colonist')).toHaveCount(3);
+  await expect(page.locator('.colonist')).toHaveCount(15);
   await page.getByRole('button', { name: 'Dismiss getting started' }).click();
   await page.getByRole('button', { name: 'Pause simulation' }).click();
   await page.getByRole('button', { name: 'More', exact: true }).click();
@@ -310,7 +358,7 @@ test('production PWA caches shell and resumes local colony fully offline', async
   expect(await page.evaluate(() => typeof (window as any).colonyDebug)).toBe('undefined');
   await context.setOffline(true);
   await page.reload();
-  await expect(page.locator('.colonist')).toHaveCount(3);
+  await expect(page.locator('.colonist')).toHaveCount(15);
   await page.getByRole('button', { name: 'Select Ada' }).click();
   await expect(page.locator('.context h3')).toHaveText('Ada');
   const caches = await page.evaluate(async () => {
@@ -327,9 +375,9 @@ test('production PWA caches shell and resumes local colony fully offline', async
 
 test('production diagnostics expose the build and update check', async ({ page }) => {
   await page.goto('http://127.0.0.1:4187/');
-  await expect(page.locator('.colonist')).toHaveCount(3);
+  await expect(page.locator('.colonist')).toHaveCount(15);
   await page.getByRole('button', { name: 'More', exact: true }).click();
-  await expect(page.locator('.panel')).toContainText('Hearthfield v0.9.0');
+  await expect(page.locator('.panel')).toContainText('Hearthfield v0.14.0');
   await expect(page.locator('.panel')).toContainText('Build local');
   await page.getByRole('button', { name: 'Check for updates' }).click();
   await expect(page.locator('.toast')).toContainText(/up to date|Could not check/);
@@ -459,7 +507,7 @@ test('recovers a corrupt latest save from the database backup', async ({ page })
     });
   });
   await page.goto('/');
-  await expect(page.locator('.colonist')).toHaveCount(3);
+  await expect(page.locator('.colonist')).toHaveCount(15);
   await expect(page.locator('.toast')).toContainText('unreadable save was skipped');
   const tick = await page.evaluate(() => (window as any).colonyDebug.simulation.world.tick);
   expect(tick).toBeGreaterThanOrEqual(savedTick);
@@ -478,7 +526,7 @@ test('storage failure starts a paused preview without overwriting existing data'
     localStorage.setItem('hearthfield-recovery-v1', 'unreadable-preserved-copy');
   });
   await page.goto('/');
-  await expect(page.locator('.colonist')).toHaveCount(3);
+  await expect(page.locator('.colonist')).toHaveCount(15);
   await expect(page.locator('.save-indicator')).toContainText('Original saves preserved');
   expect(await page.evaluate(() => (window as any).colonyDebug.clock.speed)).toBe(0);
   expect(await page.evaluate(() => localStorage.getItem('hearthfield-recovery-v1'))).toBe(
@@ -491,7 +539,7 @@ test('desktop and portrait layouts remain usable without document overflow', asy
   page.on('pageerror', (e) => errors.push(e.message));
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/');
-  await expect(page.locator('.colonist')).toHaveCount(3);
+  await expect(page.locator('.colonist')).toHaveCount(15);
   await page.getByRole('button', { name: 'Pause simulation' }).click();
   await page.screenshot({ path: 'test-results/desktop-colony.png' });
   await page.setViewportSize({ width: 390, height: 844 });
@@ -503,11 +551,126 @@ test('desktop and portrait layouts remain usable without document overflow', asy
   expect(errors).toEqual([]);
 });
 
+test('colony goals show progress, celebrate once, and persist in the roadmap', async ({ page }) => {
+  await start(page);
+  await page.setViewportSize({ width: 667, height: 375 });
+  const goal = page.locator('.goal-chip');
+  await expect(goal).toBeVisible();
+  await expect(goal).toContainText('Rest easy');
+
+  await page.evaluate(() => {
+    const debug = (window as any).colonyDebug;
+    const world = debug.simulation.world;
+    world.buildings.push({
+      id: `building-${world.nextId++}`,
+      x: 43,
+      y: 40,
+      kind: 'bed',
+    });
+    debug.step(10);
+  });
+
+  await expect(goal).toContainText('A stocked pantry');
+  await expect(page.locator('.alert')).toContainText('first proper bed');
+  await goal.click();
+  await expect(page.locator('.panel h2')).toHaveText('Colony goals');
+  await expect(page.locator('.goal-card').first()).toContainText('COMPLETE');
+  await expect(page.locator('.goal-card.active')).toContainText('A stocked pantry');
+  await page.screenshot({ path: 'test-results/mobile-colony-goals.png' });
+});
+
+test('work screen shows open and claimed colonist job posts', async ({ page }) => {
+  await start(page);
+  await page.setViewportSize({ width: 667, height: 375 });
+  await page.evaluate(() => {
+    const world = (window as any).colonyDebug.simulation.world;
+    world.jobPosts.push({
+      id: `post-${world.nextId++}`,
+      key: 'chop::node-demo:35:38',
+      kind: 'chop',
+      work: 'plants',
+      targetId: 'node-demo',
+      destination: { x: 35, y: 38 },
+      postedBy: world.pawns[0].id,
+      postedAt: world.tick,
+    });
+  });
+  await page.getByRole('button', { name: 'Work', exact: true }).click();
+  await expect(page.locator('.job-board')).toContainText('1 open');
+  await expect(page.locator('.job-post')).toContainText('Posted by Rowan');
+  await expect(page.locator('.job-post')).toContainText('OPEN');
+
+  await page.evaluate(() => {
+    const world = (window as any).colonyDebug.simulation.world;
+    world.jobPosts[0].claimedBy = world.pawns[1].id;
+  });
+  await expect(page.locator('.job-board')).toContainText('0 open');
+  await expect(page.locator('.job-post')).toContainText('Ada is on it');
+  await page.screenshot({ path: 'test-results/mobile-job-board.png' });
+});
+
+test('wildlife overview and inspector expose the interactive six-species ecology', async ({
+  page,
+}) => {
+  await start(page);
+  await page.setViewportSize({ width: 667, height: 375 });
+  await page.getByRole('button', { name: 'More', exact: true }).click();
+  await page.getByRole('button', { name: /Wildlife \d+ animals/ }).click();
+  await expect(page.locator('.panel h2')).toHaveText('Wildlife');
+  await expect(page.locator('.wildlife-card')).toHaveCount(6);
+  await expect(page.locator('.wildlife-card').filter({ hasText: 'PREDATOR' })).toHaveCount(2);
+  await expect(page.locator('.panel')).toContainText(
+    'Predators may stalk and attack nearby colonists',
+  );
+  await page.screenshot({ path: 'test-results/mobile-wildlife-overview.png' });
+
+  await page.evaluate(() => {
+    const debug = (window as any).colonyDebug;
+    const animal = debug.simulation.world.animals.find((entry: any) => entry.species === 'wolf');
+    debug.ui.panel = null;
+    debug.ui.selectedId = animal.id;
+    debug.ui.selectedTile = { x: animal.x, y: animal.y };
+    debug.camera.x = animal.x;
+    debug.camera.y = animal.y;
+  });
+  await expect(page.locator('.context')).toContainText('WILDLIFE · PREDATOR');
+  await expect(page.locator('.context')).toContainText('automatically defend themselves');
+  await page.screenshot({ path: 'test-results/mobile-wildlife-inspector.png' });
+});
+
+test('the generated landform is named and explained in the game UI', async ({ page }) => {
+  await start(page);
+  await page.setViewportSize({ width: 667, height: 375 });
+  const landscape = await page.evaluate(() => {
+    const debug = (window as any).colonyDebug;
+    debug.camera.zoom = 12;
+    return debug.simulation.world.landscape;
+  });
+  await expect(page.locator('#landscape-label')).toHaveText(landscape.name);
+  await page.getByRole('button', { name: 'More', exact: true }).click();
+  await page.getByRole('button', { name: /Wildlife \d+ animals/ }).click();
+  await expect(page.locator('.panel')).toContainText(landscape.name);
+  await expect(page.locator('.panel')).toContainText(landscape.description);
+  await page.getByRole('button', { name: 'Close panel' }).click();
+  await page.screenshot({ path: 'test-results/mobile-procedural-landscape.png' });
+});
+
+test('colonist inspector presents directed relationships', async ({ page }) => {
+  await start(page);
+  await page.setViewportSize({ width: 667, height: 375 });
+  await page.getByRole('button', { name: 'Select Rowan' }).click();
+  const relationships = page.locator('.relationships');
+  await expect(relationships).toContainText('RELATIONSHIPS');
+  await expect(relationships).toContainText('Ada');
+  await expect(relationships).toContainText('Kit');
+  await expect(relationships.locator('.relationship')).toHaveCount(14);
+});
+
 test('a second tab cannot overwrite the active colony', async ({ page, context }) => {
   await start(page);
   const second = await context.newPage();
   await second.goto('/');
-  await expect(second.locator('.colonist')).toHaveCount(3);
+  await expect(second.locator('.colonist')).toHaveCount(15);
   await expect(second.locator('.toast')).toContainText('Another tab');
   expect(await second.evaluate(() => (window as any).colonyDebug.clock.speed)).toBe(0);
   await second.getByRole('button', { name: 'More', exact: true }).click();
@@ -515,7 +678,7 @@ test('a second tab cannot overwrite the active colony', async ({ page, context }
   await expect(second.locator('.toast')).toContainText('Close the other colony tab');
   await page.close();
   await second.reload();
-  await expect(second.locator('.colonist')).toHaveCount(3);
+  await expect(second.locator('.colonist')).toHaveCount(15);
   await expect(second.locator('.save-indicator')).toHaveText('Saved on this device');
 });
 

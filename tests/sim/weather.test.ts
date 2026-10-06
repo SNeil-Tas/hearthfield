@@ -228,7 +228,7 @@ describe('weather persistence and transitions', () => {
       pawn.wetness = 63.25;
       const saved = encode(w),
         loaded = decode(saved).world;
-      expect(saved.version).toBe(7);
+      expect(saved.version).toBe(9);
       expect(weatherSnapshot(loaded)).toEqual(weatherSnapshot(w));
       expect(loaded.pawns[0]!.wetness).toBe(63.25);
       loaded.tick = w.tick = w.weatherUntil;

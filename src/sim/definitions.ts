@@ -64,6 +64,7 @@ export const WORK: Record<WorkType, string> = {
   cook: 'Cook',
 };
 export const JOB_LABELS = {
+  care: 'Caring for a child',
   chop: 'Cutting timber',
   gather: 'Gathering',
   haul: 'Hauling to storage',
@@ -96,5 +97,7 @@ export const RESOURCE_CARRY_CAPACITY = {
 } as const;
 export const SPOILED_FOOD_LIFETIME = 5 * 60 * 10;
 export const SPOILAGE_SEPARATION_THRESHOLD = 10;
+/** Thirty waste points maturing together on one Dump tile return one physical fertilizer. */
+export const COMPOST_WASTE_POINTS = 30;
 export const COOKING_INPUT = 100;
 export const COOKED_MEAL_POINTS = 80;

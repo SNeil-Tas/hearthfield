@@ -38,6 +38,7 @@ export interface Candidate {
   work?: WorkType;
   amount?: number;
   score: number;
+  postId?: string;
   personalFoodPlan?: boolean;
   irrigationSources?: IrrigationSource[];
   waterSalinity?: number;

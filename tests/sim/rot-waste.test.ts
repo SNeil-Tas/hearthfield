@@ -83,6 +83,128 @@ describe('v0.5 rot and waste systems', () => {
     expect(w.items[0]!.expiryBatches).toEqual([{ quantity: 8, expiresAt: 200 }]);
   });
 
+  it('composts expired waste in a Dump zone at thirty points per fertilizer', () => {
+    const w = flatWorld();
+    const dump = { x: 5, y: 5 };
+    w.dumpZones.push(tileKey(w, dump));
+    addSpoiledFood(w, dump, 60, 100);
+
+    w.tick = 99;
+    advanceWasteDecay(w);
+    expect(resourceTotal(w, 'waste')).toBe(60);
+    expect(resourceTotal(w, 'fertilizer')).toBe(0);
+
+    w.tick = 100;
+    advanceWasteDecay(w);
+    expect(resourceTotal(w, 'waste')).toBe(0);
+    expect(resourceTotal(w, 'fertilizer')).toBe(2);
+    expect(
+      w.items
+        .filter((item) => item.resource === 'fertilizer')
+        .every((item) => tileKey(w, item) === tileKey(w, dump)),
+    ).toBe(true);
+  });
+
+  it('lets expired waste outside Dump zones decay without creating fertilizer', () => {
+    const w = flatWorld();
+    w.dumpZones.push(tileKey(w, { x: 7, y: 7 }));
+    addSpoiledFood(w, { x: 4, y: 4 }, 30, 100);
+
+    w.tick = 100;
+    advanceWasteDecay(w);
+
+    expect(resourceTotal(w, 'waste')).toBe(0);
+    expect(resourceTotal(w, 'fertilizer')).toBe(0);
+  });
+
+  it('composts each expired waste cohort exactly once', () => {
+    const w = flatWorld();
+    const dump = { x: 5, y: 5 };
+    w.dumpZones.push(tileKey(w, dump));
+    addSpoiledFood(w, dump, 30, 100);
+    addSpoiledFood(w, dump, 30, 200);
+
+    w.tick = 100;
+    advanceWasteDecay(w);
+    expect(resourceTotal(w, 'fertilizer')).toBe(1);
+    expect(resourceTotal(w, 'waste')).toBe(30);
+
+    advanceWasteDecay(w);
+    expect(resourceTotal(w, 'fertilizer')).toBe(1);
+    expect(resourceTotal(w, 'waste')).toBe(30);
+
+    w.tick = 200;
+    advanceWasteDecay(w);
+    advanceWasteDecay(w);
+    expect(resourceTotal(w, 'fertilizer')).toBe(2);
+    expect(resourceTotal(w, 'waste')).toBe(0);
+  });
+
+  it('does not create fertilizer from a partial expired waste amount', () => {
+    const w = flatWorld();
+    const dump = { x: 5, y: 5 };
+    w.dumpZones.push(tileKey(w, dump));
+    addSpoiledFood(w, dump, 29, 100);
+
+    w.tick = 100;
+    advanceWasteDecay(w);
+
+    expect(resourceTotal(w, 'waste')).toBe(0);
+    expect(resourceTotal(w, 'fertilizer')).toBe(0);
+  });
+
+  it('surfaces slow-tick compost and offers its fertilizer to a depleted planted field', () => {
+    const w = flatWorld();
+    const dump = { x: 5, y: 5 };
+    const field = { x: 8, y: 5 };
+    const fieldKey = tileKey(w, field);
+    w.dumpZones.push(tileKey(w, dump));
+    w.growingZones.push(fieldKey);
+    w.agriculture.push({
+      key: fieldKey,
+      cropType: 'potato',
+      moisture: 60,
+      nutrients: 10,
+      salinity: 0,
+    });
+    w.crops.push({ id: nextId(w, 'crop'), ...field, kind: 'potato', growth: 0.25 });
+    for (const pawn of w.pawns) pawn.priorities.plants = 0;
+    addSpoiledFood(w, dump, 30, 100);
+    w.tick = 99;
+
+    const sim = new Simulation(w);
+    sim.step();
+
+    expect(w.events).toContainEqual({
+      tick: 100,
+      text: 'A Dump zone produced 1 fertilizer from aged waste.',
+      kind: 'success',
+    });
+    expect(sim.diagnostics.snapshot()).toContainEqual(
+      expect.objectContaining({
+        tick: 100,
+        type: 'COMPOST_PRODUCED',
+        reason: 'waste matured in Dump zones',
+        values: {
+          expiredWaste: 30,
+          compostedWaste: 30,
+          fertilizerProduced: 1,
+          dumpTiles: 1,
+        },
+      }),
+    );
+    const fertilizer = w.items.find((item) => item.resource === 'fertilizer');
+    expect(fertilizer).toMatchObject({ ...dump, quantity: 1 });
+    expect(workCandidates(w).find((candidate) => candidate.kind === 'fertilize')).toMatchObject({
+      sourceId: fertilizer?.id,
+      targetId: `zone:${fieldKey}`,
+      source: fertilizer,
+      destination: field,
+      amount: 1,
+      work: 'plants',
+    });
+  });
+
   it('prefers a dump zone and applies bounded sustained rot exposure', () => {
     const w = flatWorld();
     const dump = { x: 6, y: 5 };
@@ -152,7 +274,7 @@ describe('v0.5 rot and waste systems', () => {
     w.dumpZones.push(tileKey(w, { x: 5, y: 5 }));
     addSpoiledFood(w, { x: 5, y: 5 }, 2.5, 1000);
     const saved = encode(w);
-    expect(saved.version).toBe(7);
+    expect(saved.version).toBe(9);
     const loaded = decode(saved).world;
     expect(loaded.dumpZones).toEqual(w.dumpZones);
     expect(loaded.items.find((item) => item.resource === 'waste')?.quantity).toBe(2.5);

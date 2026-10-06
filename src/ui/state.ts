@@ -10,7 +10,8 @@ export type Tool =
   | 'stockpile'
   | 'dump'
   | 'grow';
-export type Panel = 'architect' | 'orders' | 'work' | 'journal' | 'settings' | null;
+export type Panel =
+  'architect' | 'orders' | 'work' | 'goals' | 'wildlife' | 'journal' | 'settings' | null;
 export interface UIState {
   tool: Tool;
   panel: Panel;

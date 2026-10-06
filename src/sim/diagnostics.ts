@@ -4,6 +4,7 @@ import { DAY_TICKS } from './definitions';
 import type { Building, Item, Pawn, Point, World } from './types';
 import { preparedMealOptions } from './selfcare';
 import { CROPS, growthSuitability, irrigationSources } from './agriculture';
+import { ageYears } from './health';
 
 export const DIAGNOSTIC_CAPACITY = 5000;
 
@@ -100,6 +101,8 @@ export function colonistDebugText(
     `Hunger: ${pawn.hunger.toFixed(1)}`,
     `Weather exposure: ${JSON.stringify(pawnWeatherSnapshot(world, pawn))}`,
     `Rest: ${pawn.rest.toFixed(1)}`,
+    `Age: ${ageYears(pawn)} / ${pawn.lifespanYears}`,
+    `Injuries: ${pawn.injuries.length ? JSON.stringify(pawn.injuries) : 'none'}`,
     `Mood: ${pawn.mood.toFixed(1)}`,
     `Plants skill: ${pawn.skills.plants}`,
     `Agriculture knowledge: ${pawn.knowledge.agriculture}`,
@@ -159,6 +162,9 @@ export function buildDebugReport(
       rest: pawn.rest,
       mood: pawn.mood,
       health: pawn.health,
+      age: ageYears(pawn),
+      lifespan: pawn.lifespanYears,
+      injuries: pawn.injuries,
       skills: pawn.skills,
       priorities: pawn.priorities,
       knowledge: pawn.knowledge,

@@ -7,6 +7,8 @@ import type { UIState } from './state';
 import { icon, escapeHTML as esc } from './icons';
 import { contextHTML, panelHTML } from './panels';
 import { formatResourcePoints } from './format';
+import { currentColonyGoal } from '../sim/goals';
+import { agingProgress, isAdult, lifeStage, LIFE_STAGE_LABELS } from '../sim/health';
 
 export interface DebugMetrics {
   build: string;
@@ -32,9 +34,10 @@ export class Interface {
     this.root = root;
     root.innerHTML = `<canvas id="world" aria-label="Colony map. Drag to pan, pinch or scroll to zoom. Use Orders or Architect to make plans."></canvas>
       <header class="top-hud"><div class="brand">${icon('leaf')}<div><strong>hearthfield</strong><span>A LITTLE COLONY, A LIVING WORLD</span></div></div><div class="colonist-strip" aria-label="Colonists"></div><div class="resource-strip" aria-label="Physical supplies">${['wood', 'stone', 'food'].map((r) => `<div title="${r} on ground and carried${r === 'food' ? ' plus cooking ingredients; excludes spoiled food' : ''}">${icon(r)}<b id="resource-${r}">0</b><span>${r}</span></div>`).join('')}</div></header>
-      <div class="world-label"><span class="season-dot"></span><span id="day-label">Day 1 · Early morning</span><span class="world-divider">/</span><span id="weather-label">Clear · outdoor work normal</span></div>
+      <div class="world-label"><span class="season-dot"></span><span id="day-label">Day 1 · Early morning</span><span class="world-divider">/</span><span id="weather-label">Clear · outdoor work normal</span><span class="world-divider">/</span><span id="landscape-label">River valley</span></div>
+      <button class="goal-chip" data-action="panel" data-value="goals"><span>NEXT STEP</span><strong id="goal-chip-title">Rest easy</strong><i><b id="goal-chip-progress"></b></i></button>
       <button class="focus-button icon-button" data-action="focus" aria-label="Focus settlement">${icon('focus')}</button>
-      <aside class="guide" aria-label="Getting started"><button class="icon-button context-close" data-action="dismiss-guide" aria-label="Dismiss getting started">${icon('close')}</button><span class="eyebrow">A SMALL BEGINNING</span><h1>Make room<br>for tomorrow.</h1><p>Three settlers. An open meadow.<br>The rest is up to you.</p><ol><li>Mark trees in <b>Orders</b>.</li><li>Plan beds in <b>Architect</b>.</li><li>Watch your people make it happen.</li></ol><button class="text-button" data-action="dismiss-guide">Let’s settle in <span>→</span></button></aside>
+      <aside class="guide" aria-label="Getting started"><button class="icon-button context-close" data-action="dismiss-guide" aria-label="Dismiss getting started">${icon('close')}</button><span class="eyebrow">A SMALL BEGINNING</span><h1>Make room<br>for tomorrow.</h1><p>Fifteen settlers. An open meadow.<br>The rest is up to you.</p><ol><li>Mark trees in <b>Orders</b>.</li><li>Plan beds in <b>Architect</b>.</li><li>Watch your people make it happen.</li></ol><button class="text-button" data-action="dismiss-guide">Let’s settle in <span>→</span></button></aside>
       <div class="alert" role="status"></div><div class="update-banner" role="status" hidden><span>New version available</span><button data-action="update">Reload</button><button data-action="update-later">Later</button></div><div class="tool-hint" hidden></div><div class="toast" role="status" hidden></div>
       <div class="panel-shield" hidden></div><section class="panel" hidden aria-label="Colony management"></section><aside class="context" hidden aria-label="Selection information"></aside>
       <nav class="bottom-hud" aria-label="Colony controls"><div class="navigation">${[
@@ -88,7 +91,16 @@ export class Interface {
         .join('');
     }
     for (const pawn of w.pawns) {
-      this.el(`#job-${pawn.id}`).textContent = pawn.job ? JOB_LABELS[pawn.job.kind] : 'Idle';
+      this.el(`#job-${pawn.id}`).textContent = pawn.job
+        ? JOB_LABELS[pawn.job.kind]
+        : !isAdult(pawn)
+          ? LIFE_STAGE_LABELS[lifeStage(pawn)]
+          : 'Idle';
+      const aging = agingProgress(pawn);
+      this.el(`[data-value="${pawn.id}"] .portrait`).style.setProperty(
+        '--hair',
+        `rgb(${Math.round(81 + aging * 133)}, ${Math.round(75 + aging * 139)}, ${Math.round(61 + aging * 146)})`,
+      );
       this.el(`#status-${pawn.id}`).style.background = pawn.mood < 35 ? '#d38661' : '#a4ba86';
       this.el(`[data-value="${pawn.id}"]`).classList.toggle('selected', ui.selectedId === pawn.id);
     }
@@ -100,24 +112,62 @@ export class Interface {
     this.el('#day-label').textContent =
       `Day ${Math.floor(w.tick / DAY_TICKS) + 1} · ${String(hour).padStart(2, '0')}:${String(Math.floor(((w.tick % 250) / 250) * 60)).padStart(2, '0')}`;
     this.el('#weather-label').textContent = WEATHER[w.weather].label;
+    this.el('#landscape-label').textContent = w.landscape.name;
     this.el('.guide').hidden = !ui.guide || !!ui.panel || ui.tool !== 'inspect' || !!ui.selectedId;
+    const goal = currentColonyGoal(w);
+    const goalChip = this.el('.goal-chip');
+    goalChip.hidden = !!ui.guide || !!ui.panel || ui.tool !== 'inspect';
+    this.el('#goal-chip-title').textContent = goal?.title ?? 'Colony thriving';
+    const goalProgress = goal?.progress(w);
+    this.el('#goal-chip-progress').style.width =
+      `${goalProgress ? Math.min(100, (goalProgress.value / goalProgress.target) * 100) : 100}%`;
+    goalChip.setAttribute(
+      'aria-label',
+      goal
+        ? `Next colony goal: ${goal.title}. ${goalProgress?.label}`
+        : 'All colony goals complete',
+    );
     const alert = this.el('.alert');
-    alert.textContent =
-      usefulResourceTotal(w, 'food') < 6
-        ? 'Food is running low · Gather berry bushes'
-        : w.pawns.some((p) => p.hunger < 18)
-          ? 'A colonist needs food'
-          : '';
+    const salinityNotice = [...w.events]
+      .reverse()
+      .find(
+        (event) =>
+          event.tick >= w.tick - 80 && event.text.startsWith('Soil salinity is slowing a '),
+      );
+    const milestoneNotice = [...w.events]
+      .reverse()
+      .find((event) => event.tick >= w.tick - 80 && event.text.startsWith('Milestone:'));
+    const compostNotice = [...w.events]
+      .reverse()
+      .find((event) => event.tick >= w.tick - 80 && event.text.startsWith('A Dump zone produced '));
+    alert.textContent = w.pawns.some((p) => p.hunger < 18)
+      ? 'A colonist needs food'
+      : (milestoneNotice?.text.replace('Milestone: ', '') ??
+        compostNotice?.text ??
+        salinityNotice?.text ??
+        (usefulResourceTotal(w, 'food') < 6 ? 'Food is running low · Gather berry bushes' : ''));
     alert.hidden = !alert.textContent || !!ui.panel;
     const panelKey = JSON.stringify([
       ui.panel,
       ui.debug,
-      ui.panel === 'work' ? w.pawns.map((p) => p.priorities) : null,
+      ui.panel === 'work'
+        ? [w.pawns.map((p) => p.priorities), w.jobPosts, Math.floor(w.tick / 100)]
+        : null,
       ui.panel === 'journal' ? w.events : null,
+      ui.panel === 'goals' ? [w.completedGoals, goal?.id, goalProgress] : null,
+      ui.panel === 'wildlife'
+        ? [
+            Math.floor(w.tick / 100),
+            w.animals.map((animal) => [animal.species, animal.ageTicks, Math.round(animal.energy)]),
+          ]
+        : null,
     ]);
     const panel = this.el('.panel');
     panel.hidden = !ui.panel;
-    panel.classList.toggle('wide', ['work', 'settings', 'journal'].includes(ui.panel ?? ''));
+    panel.classList.toggle(
+      'wide',
+      ['work', 'settings', 'journal', 'wildlife'].includes(ui.panel ?? ''),
+    );
     panel.classList.toggle('work-panel', ui.panel === 'work');
     this.el('.panel-shield').hidden = !['work', 'settings', 'journal'].includes(ui.panel ?? '');
     if (panelKey !== this.panelKey && !this.pressingButton) {
@@ -142,7 +192,7 @@ export class Interface {
       bed: 'Bed · Tap to place · 10 wood',
       cooking: 'Cooking station · Tap to place · 12 wood',
       stockpile: 'Stockpile · Drag an area',
-      dump: 'Dump zone · Drag an area',
+      dump: 'Dump zone · Spoiled food becomes fertilizer',
       grow: 'Growing zone · Drag soil · Potato default',
     };
     const hintText =
@@ -159,8 +209,8 @@ export class Interface {
       .forEach((b) => b.classList.toggle('active', b.dataset.value === ui.panel));
     this.el('.debug-overlay').hidden = !ui.debug;
     this.el('.debug-overlay').textContent = metrics
-      ? `Hearthfield ${metrics.build}\nFPS ${metrics.fps} · tick ${metrics.lastTickMs.toFixed(2)}ms (worst ${metrics.worstTickMs.toFixed(2)}ms)\n${metrics.activeJobs} active jobs · ${w.nodes.length} nodes · ${w.items.length} stacks · ${reservationCount} locks\n${metrics.viewport} · DPR ${metrics.dpr} · ${metrics.standalone ? 'standalone' : 'browser'} · SW ${metrics.serviceWorker}\nLast save ${metrics.lastSave}`
-      : `tick ${w.tick} · ${speed}× · ${w.nodes.length} nodes · ${w.items.length} stacks · ${reservationCount} locks`;
+      ? `Hearthfield ${metrics.build}\nFPS ${metrics.fps} · tick ${metrics.lastTickMs.toFixed(2)}ms (worst ${metrics.worstTickMs.toFixed(2)}ms)\n${metrics.activeJobs} active jobs · ${w.animals.length} animals · ${w.nodes.length} nodes · ${w.items.length} stacks · ${reservationCount} locks\n${metrics.viewport} · DPR ${metrics.dpr} · ${metrics.standalone ? 'standalone' : 'browser'} · SW ${metrics.serviceWorker}\nLast save ${metrics.lastSave}`
+      : `tick ${w.tick} · ${speed}× · ${w.animals.length} animals · ${w.nodes.length} nodes · ${w.items.length} stacks · ${reservationCount} locks`;
     const toast = this.el('.toast');
     toast.hidden = !ui.toast;
     toast.textContent = ui.toast;

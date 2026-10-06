@@ -1,13 +1,28 @@
-import { BUILDINGS, NODES, TERRAIN, SPOILED_FOOD_LIFETIME } from '../sim/definitions';
+import {
+  BUILDINGS,
+  JOB_LABELS,
+  NODES,
+  SPOILED_FOOD_LIFETIME,
+  TERRAIN,
+  WORK,
+} from '../sim/definitions';
 import type { CropType, WeatherKind } from '../sim/types';
 import { Reservations } from '../sim/reservations';
 import { interruptJob } from '../sim/jobs';
 import { CROPS, dropSeed, ensureAgricultureTile, SEED_LIFETIME } from '../sim/agriculture';
 import { dropFood, FOOD_LIFETIME, tileKey } from '../sim/world';
 import type { World } from '../sim/types';
+import { COLONY_GOALS } from '../sim/goals';
+import { ANIMALS, forageCapacity, initializeWildForage, seedWildlife } from '../sim/ecology';
+import { randomFrom } from '../sim/random';
+import { LANDSCAPES } from '../sim/landscape';
+import { MAX_LIFESPAN, MIN_LIFESPAN, YEAR_TICKS } from '../sim/health';
+import { ensureRelationships, relationshipTier } from '../sim/relationships';
+import { initializeFamily, MAX_COLONISTS, GESTATION_TICKS, closeKin } from '../sim/family';
+import { isAdult } from '../sim/health';
 
 export interface SaveEnvelope {
-  version: 1 | 2 | 3 | 4 | 5 | 6 | 7;
+  version: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
   savedAt: number;
   checksum: string;
   payload: string;
@@ -19,13 +34,34 @@ export function checksum(text: string) {
 }
 export function encode(w: World): SaveEnvelope {
   const payload = JSON.stringify(w);
-  return { version: 7, savedAt: Date.now(), checksum: checksum(payload), payload };
+  return { version: 9, savedAt: Date.now(), checksum: checksum(payload), payload };
 }
-function migrate(world: any, version: 1 | 2 | 3 | 4 | 5 | 6 | 7) {
+function migrate(world: any, version: SaveEnvelope['version']) {
+  const needsWildlife = !Array.isArray(world.animals);
+  world.landscape ??= {
+    kind: 'river-valley',
+    name: 'Legacy woodland',
+    description: 'A landscape generated before named landforms were recorded.',
+  };
+  world.animals ??= [];
+  if (!Array.isArray(world.wildForage) || world.wildForage.length !== world.terrain?.length)
+    initializeWildForage(world as World);
+  else
+    world.wildForage = world.wildForage.map((value: unknown, key: number) =>
+      Math.max(
+        0,
+        Math.min(
+          forageCapacity(world as World, key),
+          typeof value === 'number' && Number.isFinite(value) ? value : 0,
+        ),
+      ),
+    );
   world.dumpZones ??= [];
   world.weather ??= 'clear';
   world.weatherUntil ??= world.tick + 1800;
   world.weatherStartedAt ??= world.tick;
+  world.jobPosts ??= [];
+  world.completedGoals ??= [];
   if (version === 1) {
     world.crops ??= [];
     world.growingZones ??= [];
@@ -89,6 +125,18 @@ function migrate(world: any, version: 1 | 2 | 3 | 4 | 5 | 6 | 7) {
     pawn.rotHandledPenalty ??= 0;
     pawn.knowledge ??= {};
     pawn.knowledge.agriculture ??= 8;
+    pawn.ageTicks ??= 30 * YEAR_TICKS;
+    pawn.lifespanYears ??= 82;
+    pawn.injuries ??= [];
+    if (version <= 7) pawn.relationships = [];
+  }
+  if (version <= 8) (world.pawns ?? []).forEach(initializeFamily);
+  ensureRelationships(world as World);
+  for (const animal of world.animals ?? []) {
+    const definition = ANIMALS[animal.species as keyof typeof ANIMALS];
+    if (!definition) continue;
+    animal.health ??= definition.maxHealth;
+    animal.nextAttackAt ??= world.tick ?? 0;
   }
 
   world.agriculture ??= [];
@@ -136,6 +184,7 @@ function migrate(world: any, version: 1 | 2 | 3 | 4 | 5 | 6 | 7) {
     );
     dropSeed(world as World, location, 'grain', legacySeeds);
   }
+  if (needsWildlife) seedWildlife(world as World, randomFrom((world.seed ^ 0xa71a1) >>> 0));
   return world;
 }
 export function validateWorld(value: unknown): asserts value is World {
@@ -153,9 +202,21 @@ export function validateWorld(value: unknown): asserts value is World {
     !integer(w.seed, 0, 4294967295)
   )
     throw new Error('Invalid world metadata.');
+  if (
+    !w.landscape ||
+    !Object.hasOwn(LANDSCAPES, w.landscape.kind) ||
+    typeof w.landscape.name !== 'string' ||
+    w.landscape.name.length < 1 ||
+    w.landscape.name.length > 80 ||
+    typeof w.landscape.description !== 'string' ||
+    w.landscape.description.length > 240
+  )
+    throw new Error('Invalid landscape.');
   for (const name of [
     'terrain',
     'nodes',
+    'animals',
+    'wildForage',
     'crops',
     'growingZones',
     'agriculture',
@@ -167,16 +228,23 @@ export function validateWorld(value: unknown): asserts value is World {
     'dumpZones',
     'pawns',
     'events',
+    'jobPosts',
   ] as const)
     if (!Array.isArray(w[name]) || w[name].length > 50000) throw new Error(`Invalid ${name}.`);
   if (w.terrain.length !== w.width * w.height || w.terrain.some((t) => !Object.hasOwn(TERRAIN, t)))
     throw new Error('Invalid terrain.');
+  if (
+    w.wildForage.length !== w.terrain.length ||
+    w.wildForage.some((value, key) => !finite(value, 0, forageCapacity(w, key)))
+  )
+    throw new Error('Invalid wild forage.');
   const ids = new Set<string>();
   for (const e of [...w.nodes, ...w.items, ...w.buildings, ...w.blueprints])
     if (!e || !Number.isInteger(e.x) || !Number.isInteger(e.y))
       throw new Error('Invalid tile position.');
   const entities = [
     ...w.nodes,
+    ...w.animals,
     ...w.crops,
     ...w.items,
     ...w.buildings,
@@ -203,6 +271,30 @@ export function validateWorld(value: unknown): asserts value is World {
       !finite(n.work, 0, 1000)
     )
       throw new Error('Invalid resource node.');
+  const wildlifeTargetIds = new Set([
+    ...w.animals.map((animal) => animal.id),
+    ...w.pawns.map((pawn) => pawn.id),
+  ]);
+  if (
+    w.animals.length > 120 ||
+    w.animals.some(
+      (animal) =>
+        !/^animal-\d+$/.test(animal.id) ||
+        !Object.hasOwn(ANIMALS, animal.species) ||
+        !['female', 'male'].includes(animal.sex) ||
+        !integer(animal.ageTicks, 0, ANIMALS[animal.species].maxAgeTicks) ||
+        !finite(animal.energy, 0, 100) ||
+        !finite(animal.health, 0, ANIMALS[animal.species].maxHealth) ||
+        !['roaming', 'foraging', 'hunting', 'fleeing', 'feeding', 'resting'].includes(
+          animal.state,
+        ) ||
+        !integer(animal.nextMoveAt, 0, Number.MAX_SAFE_INTEGER) ||
+        !integer(animal.nextBreedAt, 0, Number.MAX_SAFE_INTEGER) ||
+        !integer(animal.nextAttackAt, 0, Number.MAX_SAFE_INTEGER) ||
+        (animal.huntTargetId !== undefined && !wildlifeTargetIds.has(animal.huntTargetId)),
+    )
+  )
+    throw new Error('Invalid wildlife.');
   if (
     w.crops.some(
       (c) =>
@@ -225,6 +317,15 @@ export function validateWorld(value: unknown): asserts value is World {
     throw new Error('Invalid agriculture.');
   if (new Set(w.agriculture.map((soil) => soil.key)).size !== w.agriculture.length)
     throw new Error('Duplicate agriculture tile.');
+  if (
+    w.agriculture.some(
+      (soil) =>
+        (soil.lastWateredBy !== undefined &&
+          (typeof soil.lastWateredBy !== 'string' || soil.lastWateredBy.length > 100)) ||
+        (soil.lastWaterSalinity !== undefined && !finite(soil.lastWaterSalinity, 0, 100)),
+    )
+  )
+    throw new Error('Invalid irrigation history.');
   if (
     w.waterSalinity.some(
       (entry) =>
@@ -271,13 +372,76 @@ export function validateWorld(value: unknown): asserts value is World {
     (w.weatherStartedAt !== undefined && !integer(w.weatherStartedAt, 0, w.tick))
   )
     throw new Error('Invalid weather.');
-  if (w.pawns.length < 1 || w.pawns.length > 50) throw new Error('Invalid colonist count.');
+  if (w.pawns.length > MAX_COLONISTS) throw new Error('Invalid colonist count.');
   for (const p of w.pawns) {
+    const ancestry = (ids: unknown): ids is string[] =>
+      Array.isArray(ids) &&
+      ids.length <= MAX_COLONISTS * 10 &&
+      new Set(ids).size === ids.length &&
+      ids.every((id) => typeof id === 'string' && /^pawn-\d+$/.test(id) && id !== p.id);
+    if (
+      !['female', 'male'].includes(p.sex) ||
+      !['heterosexual', 'homosexual', 'bisexual'].includes(p.orientation) ||
+      !finite(p.agingOnsetYears, 18, 120) ||
+      !finite(p.care, 0, 100) ||
+      !integer(p.nextConceptionAt, 0, Number.MAX_SAFE_INTEGER) ||
+      !ancestry(p.parentIds) ||
+      p.parentIds.length > 2 ||
+      !ancestry(p.ancestorIds) ||
+      !p.parentIds.every((id) => p.ancestorIds.includes(id))
+    )
+      throw new Error('Invalid colonist family data.');
+    if (p.partnerId !== undefined) {
+      const partner = w.pawns.find((other) => other.id === p.partnerId);
+      if (
+        !partner ||
+        partner.id === p.id ||
+        partner.partnerId !== p.id ||
+        !isAdult(p) ||
+        !isAdult(partner) ||
+        closeKin(p, partner)
+      )
+        throw new Error('Invalid romantic partnership.');
+    }
+    if (
+      p.caregiverId !== undefined &&
+      !w.pawns.some((other) => other.id === p.caregiverId && isAdult(other) && other.id !== p.id)
+    )
+      throw new Error('Invalid caregiver.');
+    if (
+      p.pregnancy &&
+      (!isAdult(p) ||
+        p.sex !== 'female' ||
+        !/^pawn-\d+$/.test(p.pregnancy.partnerId) ||
+        p.pregnancy.partnerId === p.id ||
+        !integer(p.pregnancy.conceivedAt, 0, w.tick) ||
+        !integer(p.pregnancy.dueAt, p.pregnancy.conceivedAt, Number.MAX_SAFE_INTEGER) ||
+        p.pregnancy.dueAt - p.pregnancy.conceivedAt !== GESTATION_TICKS)
+    )
+      throw new Error('Invalid pregnancy.');
     if (p.wetness !== undefined && !finite(p.wetness, 0, 100)) throw new Error('Invalid wetness.');
     if (typeof p.name !== 'string' || p.name.length > 60 || !/^#[0-9a-f]{6}$/i.test(p.color))
       throw new Error('Invalid colonist identity.');
     if (['health', 'hunger', 'rest', 'mood'].some((k) => !finite(p[k as 'health'], 0, 100)))
       throw new Error('Invalid needs.');
+    if (
+      !integer(p.ageTicks, 0, MAX_LIFESPAN * YEAR_TICKS) ||
+      !integer(p.lifespanYears, MIN_LIFESPAN, MAX_LIFESPAN) ||
+      !Array.isArray(p.injuries) ||
+      p.injuries.length > 20 ||
+      p.injuries.some(
+        (injury) =>
+          !injury ||
+          typeof injury.id !== 'string' ||
+          !/^injury-\d+$/.test(injury.id) ||
+          !['bruise', 'cut', 'sprain', 'burn'].includes(injury.kind) ||
+          !['head', 'torso', 'arm', 'leg'].includes(injury.bodyPart) ||
+          !integer(injury.severity, 1, 40) ||
+          !integer(injury.inflictedAt, 0, w.tick) ||
+          !finite(injury.healsAt, injury.inflictedAt, Number.MAX_SAFE_INTEGER),
+      )
+    )
+      throw new Error('Invalid colonist health history.');
     for (const type of ['plants', 'build', 'haul', 'cook'] as const)
       if (
         !p.skills ||
@@ -300,11 +464,62 @@ export function validateWorld(value: unknown): asserts value is World {
       !['info', 'success', 'warning'].includes(e.kind)
     )
       throw new Error('Invalid event.');
+  const pawnIds = new Set(w.pawns.map((pawn) => pawn.id));
+  for (const pawn of w.pawns) {
+    if (
+      !Array.isArray(pawn.relationships) ||
+      pawn.relationships.length !== Math.max(0, w.pawns.length - 1) ||
+      new Set(pawn.relationships.map((relationship) => relationship.targetId)).size !==
+        pawn.relationships.length ||
+      pawn.relationships.some(
+        (relationship) =>
+          !relationship ||
+          relationship.targetId === pawn.id ||
+          !pawnIds.has(relationship.targetId) ||
+          !finite(relationship.opinion, -100, 100) ||
+          !finite(relationship.familiarity, 0, 100) ||
+          !integer(relationship.interactions, 0, Number.MAX_SAFE_INTEGER) ||
+          !integer(relationship.lastInteractionAt, 0, w.tick) ||
+          !['rival', 'acquaintance', 'friend', 'close-friend'].includes(relationship.tier) ||
+          relationship.tier !== relationshipTier(relationship.opinion, relationship.familiarity),
+      )
+    )
+      throw new Error('Invalid relationships.');
+  }
+  if (
+    w.jobPosts.length > 30 ||
+    new Set(w.jobPosts.map((post) => post.id)).size !== w.jobPosts.length ||
+    w.jobPosts.some(
+      (post) =>
+        !post ||
+        !/^post-\d+$/.test(post.id) ||
+        Number(post.id.split('-')[1]) >= w.nextId ||
+        typeof post.key !== 'string' ||
+        post.key.length > 300 ||
+        !Object.hasOwn(JOB_LABELS, post.kind) ||
+        !Object.hasOwn(WORK, post.work) ||
+        !pawnIds.has(post.postedBy) ||
+        (post.claimedBy !== undefined && !pawnIds.has(post.claimedBy)) ||
+        !integer(post.postedAt, 0, w.tick) ||
+        !post.destination ||
+        !integer(post.destination.x, 0, w.width - 1) ||
+        !integer(post.destination.y, 0, w.height - 1),
+    )
+  )
+    throw new Error('Invalid job board.');
+  const goalIds = new Set(COLONY_GOALS.map((goal) => goal.id));
+  if (
+    w.completedGoals !== undefined &&
+    (!Array.isArray(w.completedGoals) ||
+      new Set(w.completedGoals).size !== w.completedGoals.length ||
+      w.completedGoals.some((goal) => !goalIds.has(goal)))
+  )
+    throw new Error('Invalid colony goals.');
 }
 export function decode(raw: unknown): { world: World; savedAt: number } {
   if (!raw || typeof raw !== 'object') throw new Error('Unrecognised save.');
   const e = raw as SaveEnvelope;
-  if (![1, 2, 3, 4, 5, 6, 7].includes(e.version))
+  if (![1, 2, 3, 4, 5, 6, 7, 8, 9].includes(e.version))
     throw new Error('This save needs a different game version.');
   if (
     typeof e.payload !== 'string' ||

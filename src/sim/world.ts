@@ -9,6 +9,7 @@ import {
   FERTILIZER_STACK_CAP,
   SPOILED_FOOD_LIFETIME,
   SPOILAGE_SEPARATION_THRESHOLD,
+  COMPOST_WASTE_POINTS,
   RESOURCE_CARRY_CAPACITY,
 } from './definitions';
 import type { ExpiryBatch, FoodType, Point, Resource, Stack, World } from './types';
@@ -293,9 +294,25 @@ export function requiresFoodSeparation(item: { resource: Resource; spoiledPoints
 export function isDumpTile(w: World, p: Point) {
   return w.dumpZones.includes(tileKey(w, p));
 }
+export interface WasteDecayResult {
+  expiredWaste: number;
+  compostedWaste: number;
+  fertilizerProduced: number;
+  dumpTiles: number;
+}
 export function advanceWasteDecay(w: World) {
+  const expiredByDump = new Map<number, number>();
+  let expiredWaste = 0;
   for (const item of [...w.items]) {
     if (item.resource !== 'waste' || !item.expiryBatches?.length) continue;
+    const expired = item.expiryBatches
+      .filter((batch) => batch.expiresAt <= w.tick)
+      .reduce((total, batch) => total + batch.quantity, 0);
+    expiredWaste += expired;
+    if (expired > 1e-6 && isDumpTile(w, item)) {
+      const key = tileKey(w, item);
+      expiredByDump.set(key, (expiredByDump.get(key) ?? 0) + expired);
+    }
     const remaining = item.expiryBatches.filter((batch) => batch.expiresAt > w.tick);
     const quantity = remaining.reduce((total, batch) => total + batch.quantity, 0);
     if (quantity <= 1e-6) w.items = w.items.filter((candidate) => candidate.id !== item.id);
@@ -304,6 +321,21 @@ export function advanceWasteDecay(w: World) {
       item.quantity = quantity;
     }
   }
+  let fertilizerProduced = 0;
+  let compostedWaste = 0;
+  for (const [key, expired] of expiredByDump) {
+    const fertilizer = Math.floor((expired + 1e-6) / COMPOST_WASTE_POINTS);
+    if (fertilizer <= 0) continue;
+    fertilizerProduced += fertilizer;
+    compostedWaste += fertilizer * COMPOST_WASTE_POINTS;
+    drop(w, { x: key % w.width, y: Math.floor(key / w.width) }, 'fertilizer', fertilizer);
+  }
+  return {
+    expiredWaste,
+    compostedWaste,
+    fertilizerProduced,
+    dumpTiles: expiredByDump.size,
+  } satisfies WasteDecayResult;
 }
 export function foodType(item: { resource: Resource; foodType?: FoodType }): FoodType {
   return item.resource === 'food' && item.foodType === 'meal' ? 'meal' : 'raw';

@@ -4,7 +4,7 @@ test('mobile agriculture inspector, crop choice and physical starting supplies',
   page,
 }) => {
   await page.goto('/');
-  await expect(page.locator('.colonist')).toHaveCount(3);
+  await expect(page.locator('.colonist')).toHaveCount(15);
   await page.getByRole('button', { name: 'Dismiss getting started' }).click();
   await page.getByRole('button', { name: 'Pause simulation' }).click();
   await page.evaluate(() => {
@@ -71,6 +71,17 @@ test('mobile agriculture inspector, crop choice and physical starting supplies',
     };
   });
   expect(planted).toEqual({ count: 1, seeds: 19 });
+  await page.evaluate(() => {
+    const d = (window as any).colonyDebug,
+      w = d.simulation.world,
+      crop = w.crops[0],
+      soil = w.agriculture.find((entry: any) => entry.key === crop.y * w.width + crop.x);
+    soil.salinity = 12;
+    soil.lastWateredAt = w.tick;
+    soil.lastWateredBy = w.pawns.find((pawn: any) => pawn.name === 'Ada').id;
+    soil.lastWaterSalinity = 32;
+    d.step(0);
+  });
   for (const text of [
     'Crop: Potato',
     'Stage: Seeded',
@@ -78,6 +89,7 @@ test('mobile agriculture inspector, crop choice and physical starting supplies',
     'Moisture:',
     'Nutrients:',
     'Soil salinity:',
+    'Last irrigation: brackish water · Ada',
     'Temperature: Not simulated / Suitable',
     'Status:',
   ])

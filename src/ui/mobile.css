@@ -45,6 +45,10 @@
     top: 81px;
     font-size: 9px;
   }
+  .goal-chip {
+    left: 14px;
+    top: 103px;
+  }
   .focus-button {
     top: 82px;
     right: 16px;
@@ -126,6 +130,14 @@
   }
   .world-label {
     top: 70px;
+  }
+  .goal-chip {
+    top: 91px;
+    min-width: 158px;
+    padding: 7px 10px 8px;
+  }
+  .goal-chip strong {
+    font-size: 13px;
   }
   .focus-button {
     top: 70px;
@@ -341,6 +353,12 @@
   }
 }
 @media (orientation: portrait) {
+  .work-content {
+    grid-template-columns: 1fr;
+  }
+  .wildlife-grid {
+    grid-template-columns: 1fr;
+  }
   .top-hud {
     flex-wrap: wrap;
     gap: 10px;
@@ -350,11 +368,12 @@
   }
   .colonist-strip {
     order: 3;
+    flex-basis: 100%;
     width: 100%;
-    justify-content: space-around;
+    justify-content: flex-start;
   }
   .colonist {
-    flex: 1;
+    flex: 0 0 auto;
   }
   .resource-strip {
     padding: 6px;
@@ -362,6 +381,9 @@
   .world-label {
     top: 143px;
     font-size: 9px;
+  }
+  .goal-chip {
+    top: 170px;
   }
   .focus-button {
     top: 152px;

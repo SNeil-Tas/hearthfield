@@ -102,6 +102,12 @@ svg {
   color: #dddcc1;
 }
 .colonist-strip {
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+  touch-action: pan-x;
   display: flex;
   background: #243d34ed;
   padding: 5px;
@@ -111,6 +117,7 @@ svg {
   gap: 3px;
 }
 .colonist {
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -149,7 +156,7 @@ svg {
   width: 13px;
   height: 14px;
   background: #e4c7a1;
-  border-top: 5px solid #514738;
+  border-top: 5px solid var(--hair, #514738);
   border-radius: 7px;
 }
 .colonist-label {
@@ -230,6 +237,49 @@ svg {
 .world-divider {
   opacity: 0.45;
   margin: 0 4px;
+}
+.goal-chip {
+  position: absolute;
+  left: 24px;
+  top: 124px;
+  min-width: 178px;
+  padding: 9px 12px 10px;
+  text-align: left;
+  background: #243d34dc;
+  border: 1px solid var(--edge);
+  border-radius: 8px;
+  box-shadow: 0 5px 20px #24392b25;
+}
+.goal-chip span {
+  display: block;
+  color: #b7c5af;
+  font-size: 7px;
+  font-weight: 700;
+  letter-spacing: 1.3px;
+}
+.goal-chip strong {
+  display: block;
+  margin-top: 4px;
+  color: #f1dfb8;
+  font:
+    15px Georgia,
+    serif;
+}
+.goal-chip > i,
+.goal-card > div {
+  display: block;
+  height: 3px;
+  margin-top: 8px;
+  overflow: hidden;
+  border-radius: 3px;
+  background: #e8ddbd1f;
+}
+.goal-chip > i > b,
+.goal-card > div > i {
+  display: block;
+  height: 100%;
+  background: #dfc18c;
+  transition: width 0.25s ease;
 }
 .focus-button {
   position: absolute;
@@ -460,6 +510,102 @@ svg {
   line-height: 1.7;
   margin: 15px 0 0;
 }
+.goal-list {
+  display: grid;
+  gap: 7px;
+  margin-top: 16px;
+}
+.goal-card {
+  padding: 13px 14px;
+  border: 1px solid var(--edge);
+  border-radius: 8px;
+  background: #ffffff04;
+}
+.goal-card > span {
+  color: #cbb98f;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 1.2px;
+}
+.goal-card h3 {
+  margin: 5px 0;
+  color: #eee5ce;
+  font:
+    18px Georgia,
+    serif;
+}
+.goal-card p,
+.goal-card small {
+  color: #afbea7;
+  font-size: 10px;
+  line-height: 1.5;
+}
+.goal-card p {
+  margin: 0;
+}
+.goal-card small {
+  display: block;
+  margin-top: 6px;
+}
+.goal-card.done {
+  opacity: 0.72;
+}
+.goal-card.locked {
+  opacity: 0.45;
+}
+.goal-card.active {
+  border-color: #dfc18c66;
+  background: #dfc18c0b;
+}
+.wildlife-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+  margin-top: 14px;
+}
+.wildlife-card {
+  display: grid;
+  grid-template-columns: 36px 1fr;
+  gap: 10px;
+  min-height: 92px;
+  padding: 12px;
+  border: 1px solid var(--edge);
+  border-radius: 8px;
+  background: #ffffff04;
+}
+.wildlife-card > i {
+  width: 30px;
+  height: 20px;
+  margin-top: 13px;
+  border-radius: 50% 55% 45% 50%;
+  background: var(--animal);
+  box-shadow: 13px -5px 0 -5px var(--animal-accent);
+}
+.wildlife-card span {
+  color: #b8c5af;
+  font-size: 7px;
+  font-weight: 700;
+  letter-spacing: 1px;
+}
+.wildlife-card h3 {
+  display: inline;
+  margin: 0 7px 0 0;
+  color: #eee5ce;
+  font:
+    17px Georgia,
+    serif;
+}
+.wildlife-card strong {
+  color: #dfc18c;
+  font-size: 15px;
+  font-weight: 500;
+}
+.wildlife-card p {
+  margin: 6px 0 0;
+  color: #a9b8a3;
+  font-size: 9px;
+  line-height: 1.5;
+}
 .context {
   position: absolute;
   right: max(24px, env(safe-area-inset-right));
@@ -530,6 +676,47 @@ svg {
   font-weight: 500;
   font-variant-numeric: tabular-nums;
 }
+.relationships {
+  margin: 18px 0 4px;
+}
+.relationships > .eyebrow {
+  margin-bottom: 7px;
+}
+.relationship {
+  display: grid;
+  grid-template-columns: 10px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 7px 8px;
+  border-top: 1px solid var(--edge);
+}
+.relationship strong,
+.relationship small {
+  display: block;
+}
+.relationship strong {
+  font-size: 11px;
+  font-weight: 600;
+}
+.relationship small {
+  margin-top: 2px;
+  color: #a9b8a3;
+  font-size: 8px;
+}
+.relationship > b {
+  color: #c5d1bb;
+  font-size: 11px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.relationship.friend > b,
+.relationship.close-friend > b {
+  color: #dfc18c;
+}
+.relationship.rival > b {
+  color: #d78668;
+}
 meter {
   flex: 1;
   min-width: 0;
@@ -563,6 +750,18 @@ meter::-webkit-meter-even-less-good-value {
   border-collapse: collapse;
   margin-top: 18px;
   font-size: 12px;
+}
+.work-content {
+  display: grid;
+  grid-template-columns: 165px minmax(0, 1fr);
+  align-items: start;
+  gap: 12px;
+}
+.work-priorities {
+  min-width: 0;
+}
+.work-priorities .panel-note {
+  margin-top: 0;
 }
 .work-table th {
   text-align: left;
@@ -600,6 +799,81 @@ meter::-webkit-meter-even-less-good-value {
   font-size: 9px;
   color: #a7b9a0;
   margin-top: 3px;
+}
+.job-board {
+  margin: 2px 0 12px;
+  padding: 11px 12px 7px;
+  border: 1px solid var(--edge);
+  border-radius: 8px;
+  background: #ffffff04;
+}
+.job-board > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.job-board h3 {
+  margin: 4px 0 0;
+  color: #eee5ce;
+  font:
+    20px Georgia,
+    serif;
+}
+.job-board > header > b {
+  padding: 5px 8px;
+  border-radius: 10px;
+  color: #dfc18c;
+  background: #dfc18c12;
+  font-size: 9px;
+  font-weight: 600;
+}
+.job-board > p {
+  margin: 9px 0 0;
+  color: #a9b8a3;
+  font-size: 10px;
+  line-height: 1.5;
+}
+.job-post {
+  display: grid;
+  grid-template-columns: 7px 1fr;
+  align-items: center;
+  gap: 9px;
+  min-height: 45px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--edge);
+}
+.job-post > i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #dfc18c;
+}
+.job-post strong,
+.job-post small {
+  display: block;
+}
+.job-post strong {
+  font-size: 11px;
+  font-weight: 600;
+}
+.job-post small {
+  margin-top: 3px;
+  color: #a9b8a3;
+  font-size: 8px;
+}
+.job-post > span {
+  grid-column: 2;
+  color: #dfc18c;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.7px;
+}
+.job-post.claimed {
+  opacity: 0.62;
+}
+.job-post.claimed > i {
+  background: #9fb68b;
 }
 .priority-1 {
   color: #efd095;

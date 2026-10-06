@@ -38,6 +38,8 @@ import {
 } from './world';
 import { COOKED_MEAL_POINTS, COOKING_INPUT } from './definitions';
 import { DiagnosticLog, point } from './diagnostics';
+import { agingMovementMultiplier, isAdult } from './health';
+import { childShelter } from './family';
 
 export function interruptJob(
   w: World,
@@ -106,6 +108,11 @@ export function advanceJob(
   };
   const cancel = (reason = 'interrupted') =>
     interruptJob(w, pawn, reservations, diagnostics, reason);
+  const child = job.kind === 'care' ? w.pawns.find((p) => p.id === job.targetId) : undefined;
+  if (job.kind === 'care' && (!child || isAdult(child) || child.health <= 0)) {
+    cancel('child no longer needs care');
+    return false;
+  }
   const node = w.nodes.find((n) => n.id === job.targetId);
   const bp = w.blueprints.find((b) => b.id === job.targetId);
   const crop = w.crops.find((c) => c.id === job.targetId);
@@ -144,7 +151,8 @@ export function advanceJob(
     const step =
       TICK_SECONDS *
       (pawn.rest < 15 ? 1.4 : 2.5) *
-      (pawn.illnessUntil && pawn.illnessUntil > w.tick ? 0.88 : 1);
+      (pawn.illnessUntil && pawn.illnessUntil > w.tick ? 0.88 : 1) *
+      agingMovementMultiplier(pawn);
     if (length <= step) {
       pawn.x = next.x;
       pawn.y = next.y;
@@ -152,6 +160,10 @@ export function advanceJob(
     } else {
       pawn.x += (dx / length) * step;
       pawn.y += (dy / length) * step;
+    }
+    if (job.escortingChild && child) {
+      child.x = pawn.x;
+      child.y = pawn.y;
     }
     return false;
   }
@@ -203,17 +215,28 @@ export function advanceJob(
       cancel('source item missing');
       return false;
     }
+    if (
+      job.kind === 'care' &&
+      (item.resource !== 'food' ||
+        (foodType(item) === 'meal' ? isFoodSpoiled(w, item) : freshPoints(item) <= 0))
+    ) {
+      cancel('child food spoiled');
+      return false;
+    }
     if (job.kind === 'separate') {
       job.destination = { x: item.x, y: item.y };
       job.phase = 'target';
       return false;
     }
-    if (job.kind === 'cook' && requiresFoodSeparation(item)) {
+    if (
+      (job.kind === 'cook' && requiresFoodSeparation(item)) ||
+      (job.kind === 'care' && spoiledPoints(item) > 0)
+    ) {
       if (!job.separationProgress)
         diagnostics?.record(w, 'FOOD_SEPARATION_REQUIRED', {
           entityId: pawn.id,
           targetId: item.id,
-          jobType: 'cook',
+          jobType: job.kind,
           reason: 'required ingredient substep',
         });
       job.separationProgress = (job.separationProgress ?? 0) + TICK_SECONDS;
@@ -228,7 +251,7 @@ export function advanceJob(
       diagnostics?.record(w, 'FOOD_SEPARATED', {
         entityId: pawn.id,
         targetId: item.id,
-        jobType: 'cook',
+        jobType: job.kind,
         values: { fresh: freshPoints(item), spoiled },
       });
       job.separationProgress = 0;
@@ -342,6 +365,61 @@ export function advanceJob(
   const plantWork =
     job.progress * (1 + pawn.skills.plants * 0.04) * (pawn.productivity ?? 1) * weatherWork;
   switch (job.kind) {
+    case 'care': {
+      if (!child) break;
+      if (job.escortingChild) {
+        finish();
+        break;
+      }
+      // A child stays in place while waiting for adult help.
+      if (Math.hypot(pawn.x - child.x, pawn.y - child.y) > 1.5) {
+        cancel('child moved');
+        break;
+      }
+      if (job.progress < 6) break;
+      if (pawn.carrying?.resource === 'food') {
+        const food = pawn.carrying;
+        if (foodType(food) === 'meal' ? !isFoodSpoiled(w, food) : freshPoints(food) > 0) {
+          const eaten = Math.min(1, foodType(food) === 'meal' ? food.quantity : freshPoints(food));
+          const before = child.hunger;
+          child.hunger = Math.min(
+            100,
+            child.hunger + eaten * (foodType(food) === 'meal' ? COOKED_MEAL_POINTS : 65),
+          );
+          diagnostics?.record(w, 'FOOD_CONSUMED', {
+            entityId: child.id,
+            entityName: child.name,
+            jobType: 'care',
+            position: point(child),
+            values: {
+              hungerBefore: before,
+              hungerAfter: child.hunger,
+              foodType: foodType(food),
+              consumedPoints: eaten * (foodType(food) === 'meal' ? COOKED_MEAL_POINTS : 1),
+            },
+          });
+          food.quantity -= eaten;
+          if (foodType(food) === 'raw') food.freshPoints = Math.max(0, freshPoints(food) - eaten);
+        }
+        if (food.quantity > 1e-6) dropStack(w, pawn, food);
+        pawn.carrying = null;
+      }
+      child.care = Math.min(100, child.care + 50);
+      child.caregiverId = pawn.id;
+      if (!roomTopology(w).isIndoors(child)) {
+        const shelter = childShelter(w, pawn, grid);
+        if (shelter) {
+          job.destination = shelter.destination;
+          job.path = shelter.path;
+          job.escortingChild = true;
+          child.x = pawn.x;
+          child.y = pawn.y;
+          break;
+        }
+      }
+      finish();
+      break;
+    }
     case 'move':
       finish();
       break;

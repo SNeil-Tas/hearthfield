@@ -38,6 +38,8 @@ import type { CropType, World } from '../../src/sim/types';
 import { applyCommand } from '../../src/sim/commands';
 import { DiagnosticLog } from '../../src/sim/diagnostics';
 import { generateWorld } from '../../src/sim/generate';
+import { Simulation } from '../../src/sim/simulation';
+import { agricultureContextHTML } from '../../src/ui/agriculture-context';
 
 function addZone(
   w: World,
@@ -348,6 +350,39 @@ describe('v0.9 irrigation judgement and salinity', () => {
     expect(novice.waterSalinity).toBe(BRACKISH_WATER_SALINITY);
   });
 
+  it('shows one brief judgement thought when a real job evaluates ambiguous water', () => {
+    const noviceCase = judgementWorld();
+    const novice = noviceCase.w.pawns[1]!;
+    noviceCase.w.pawns = [novice];
+    const noviceSimulation = new Simulation(noviceCase.w);
+    for (let i = 0; i < 20 && !noviceSimulation.feedback.length; i++) noviceSimulation.step();
+    expect(noviceSimulation.feedback.map((entry) => entry.text)).toEqual(['Looks fine.']);
+    expect(
+      noviceSimulation.diagnostics
+        .snapshot()
+        .filter((event) => event.type === 'IRRIGATION_JUDGEMENT'),
+    ).toHaveLength(1);
+
+    const expertCase = judgementWorld();
+    expertCase.w.pawns = [expertCase.w.pawns[0]!];
+    const expertSimulation = new Simulation(expertCase.w);
+    for (let i = 0; i < 20 && !expertSimulation.feedback.length; i++) expertSimulation.step();
+    expect(expertSimulation.feedback.map((entry) => entry.text)).toEqual(['Too salty.']);
+  });
+
+  it('does not create judgement thoughts for ordinary freshwater watering', () => {
+    const { w, brackishKey } = judgementWorld();
+    w.terrain[brackishKey] = 'soil';
+    w.waterSalinity = [];
+    w.pawns = [w.pawns[1]!];
+    const simulation = new Simulation(w);
+    for (let i = 0; i < 80; i++) simulation.step();
+    expect(simulation.feedback).toEqual([]);
+    expect(
+      simulation.diagnostics.snapshot().some((event) => event.type === 'IRRIGATION_JUDGEMENT'),
+    ).toBe(false);
+  });
+
   it('lets a novice complete brackish watering and crop growth responds only through soil', () => {
     const { w, soil } = judgementWorld();
     const novice = w.pawns[1]!;
@@ -418,6 +453,42 @@ describe('v0.9 irrigation judgement and salinity', () => {
       1,
     );
     expect(agricultureAt(loaded, soil.key)?.salinity).toBe(24);
+  });
+
+  it('notifies once when salinity becomes limiting and resets after recovery', () => {
+    const w = flatWorld();
+    const soil = addZone(w, 3, 3, 'potato', 0.2);
+    const diagnostics = new DiagnosticLog();
+    soil.salinity = 24;
+    advanceAgriculture(w, 10, diagnostics);
+    advanceAgriculture(w, 10, diagnostics);
+    expect(
+      w.events.filter((event) => event.text.startsWith('Soil salinity is slowing')),
+    ).toHaveLength(1);
+    expect(
+      diagnostics.snapshot().filter((event) => event.type === 'CROP_SALINITY_NOTICE'),
+    ).toHaveLength(1);
+    soil.salinity = 0;
+    advanceAgriculture(w, 10, diagnostics);
+    w.tick = 101;
+    soil.salinity = 24;
+    advanceAgriculture(w, 10, diagnostics);
+    expect(
+      w.events.filter((event) => event.text.startsWith('Soil salinity is slowing')),
+    ).toHaveLength(2);
+  });
+
+  it('shows recent irrigation context and current salinity in the field inspector', () => {
+    const w = flatWorld();
+    const soil = addZone(w, 3, 3, 'potato', 0.2);
+    soil.moisture = 25;
+    applyWatering(w, { x: 3, y: 3 }, BRACKISH_WATER_SALINITY, undefined, w.pawns[0]!.id);
+    const html = agricultureContextHTML(w, { x: 3, y: 3 });
+    expect(html).toContain('Soil salinity:');
+    expect(html).toContain(`Last irrigation: brackish water · ${w.pawns[0]!.name}`);
+    const loadedSoil = decode(encode(w)).world.agriculture[0]!;
+    expect(loadedSoil.lastWateredBy).toBe(w.pawns[0]!.id);
+    expect(loadedSoil.lastWaterSalinity).toBe(BRACKISH_WATER_SALINITY);
   });
 
   it('migrates schema 6 with freshwater, clean soil and viable knowledge defaults', () => {
@@ -597,7 +668,7 @@ describe('save compatibility and accounting', () => {
     w.waterSalinity.push({ key: waterKey, salinity: BRACKISH_WATER_SALINITY });
     dropSeed(w, { x: 2, y: 2 }, 'potato', 3);
     const saved = encode(w);
-    expect(saved.version).toBe(7);
+    expect(saved.version).toBe(9);
     const loaded = decode(saved).world;
     expect(loaded.agriculture[0]!.cropType).toBe('potato');
     expect(loaded.crops[0]!.growth).toBe(0.43);
