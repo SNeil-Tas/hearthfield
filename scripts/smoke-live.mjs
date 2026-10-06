@@ -12,7 +12,8 @@ try {
   const response = await page.goto(url);
   assert.equal(response.status(), 200);
   await page.locator('.colonist').first().waitFor();
-  assert.equal(await page.locator('.colonist').count(), 3);
+  const colonists = await page.locator('.colonist').count();
+  assert.equal(colonists, 15);
   await page.getByRole('button', { name: 'More', exact: true }).click();
   const panel = await page.locator('.panel').textContent();
   assert(panel.includes(`Hearthfield v${version}`));
@@ -27,7 +28,7 @@ try {
       version,
       build,
       status: response.status(),
-      colonists: 3,
+      colonists,
       cacheNames,
       errors,
     }),
