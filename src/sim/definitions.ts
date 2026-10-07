@@ -64,6 +64,8 @@ export const WORK: Record<WorkType, string> = {
   cook: 'Cook',
 };
 export const JOB_LABELS = {
+  relax: 'Taking a personal break',
+  design: 'Designing a home',
   care: 'Caring for a child',
   chop: 'Cutting timber',
   gather: 'Gathering',

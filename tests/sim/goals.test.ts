@@ -15,12 +15,21 @@ describe('colony goals', () => {
 
     expect(world.completedGoals).toContain('first-bed');
     expect(world.events.filter((event) => event.text.startsWith('Milestone:'))).toHaveLength(1);
-    expect(world.pawns.every((pawn) => (pawn.moodBias ?? 0) === 3)).toBe(true);
+    expect(
+      world.pawns.every((pawn) =>
+        pawn.psychology.memories.some((m) => m.key === 'milestone:first-bed' && m.impact === 3),
+      ),
+    ).toBe(true);
     expect(simulation.feedback.map((entry) => entry.text)).toContain('We did it!');
 
     for (let tick = 0; tick < 20; tick++) simulation.step();
     expect(world.events.filter((event) => event.text.startsWith('Milestone:'))).toHaveLength(1);
-    expect(world.pawns.every((pawn) => (pawn.moodBias ?? 0) === 3)).toBe(true);
+    expect(
+      world.pawns.every(
+        (pawn) =>
+          pawn.psychology.memories.filter((m) => m.key === 'milestone:first-bed').length === 1,
+      ),
+    ).toBe(true);
   });
 
   it('remembers goals completed out of order and advances to the earliest unfinished goal', () => {

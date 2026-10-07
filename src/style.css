@@ -679,6 +679,96 @@ svg {
 .relationships {
   margin: 18px 0 4px;
 }
+.psychology {
+  margin: 18px 0;
+  padding: 14px 0;
+  border-block: 1px solid var(--edge);
+}
+.psychology .eyebrow {
+  display: block;
+  margin: 14px 0 8px;
+}
+.psychology .eyebrow:first-child {
+  margin-top: 0;
+}
+.psychology-stress {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 11px;
+}
+.psychology meter {
+  flex: 1;
+  min-width: 0;
+}
+.psychology b {
+  font-variant-numeric: tabular-nums;
+}
+.personality-traits {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 7px;
+}
+.personality-traits > div {
+  padding: 8px;
+  border-radius: 4px;
+  background: #ffffff06;
+}
+.personality-traits strong {
+  display: block;
+  font-size: 11px;
+  font-weight: 500;
+  color: #e2cfad;
+}
+.personality-traits small {
+  font-size: 9px;
+  text-transform: capitalize;
+  color: #a9b8a3;
+}
+.emotional-need {
+  margin-bottom: 10px;
+}
+.emotional-need .need {
+  margin-bottom: 3px;
+}
+.emotional-need .need span {
+  width: 65px;
+  flex-shrink: 0;
+}
+.emotional-need > small {
+  display: block;
+  font-size: 10px;
+  line-height: 1.5;
+  color: #a9b8a3;
+}
+.emotional-need.unmet .need {
+  color: #e2ad8f;
+}
+.memory-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.memory-list li {
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--edge);
+  font-size: 11px;
+}
+.memory-list small {
+  display: block;
+  color: #a9b8a3;
+  font-size: 9px;
+  margin-top: 4px;
+}
+.memory-list .negative {
+  color: #dca084;
+}
+.memory-list .positive {
+  color: #bcd299;
+}
 .relationships > .eyebrow {
   margin-bottom: 7px;
 }

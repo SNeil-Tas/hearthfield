@@ -40,5 +40,7 @@ it('supports twenty colonists working on an 80×80 map for ten simulated minutes
   );
   expect(w.buildings.filter((b) => b.kind === 'bed').length).toBeGreaterThanOrEqual(8);
   expect(() => validateWorld(w)).not.toThrow();
-  expect(w.pawns.filter((p) => p.health > 90).length).toBe(20);
+  expect(w.pawns.filter((p) => p.health > 0).length).toBe(20);
+  // Autonomous construction adds heavy work; its daily accident checks can injure a worker.
+  expect(w.pawns.every((p) => p.health > 90 || p.injuries.length > 0)).toBe(true);
 }, 30000);

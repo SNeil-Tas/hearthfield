@@ -256,7 +256,7 @@ describe('physical food accounting', () => {
     });
     w.pawns[0]!.carrying = { ...raw(4.75), spoilsAt: 800 };
     const saved = encode(w);
-    expect(saved.version).toBe(9);
+    expect(saved.version).toBe(11);
     const loaded = decode(saved).world;
     expect(inventory(loaded)).toBe(95);
     expect(loaded.stockpiles).toEqual([66]);

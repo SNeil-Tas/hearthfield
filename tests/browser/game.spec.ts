@@ -210,7 +210,8 @@ test('landscape play, management, placement, save/reload and narrow resize', asy
       page.evaluate(
         () =>
           (window as any).colonyDebug.simulation.world.buildings.filter(
-            (b: any) => b.kind === 'bed',
+            (b: any) =>
+              b.kind === 'bed' && ((b.x === 39 && b.y === 38) || (b.x === 41 && b.y === 37)),
           ).length,
       ),
     )

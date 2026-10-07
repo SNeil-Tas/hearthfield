@@ -20,12 +20,21 @@ import { emit } from './events';
 import { DiagnosticLog, point } from './diagnostics';
 import { reachableMeal } from './selfcare';
 import { completeColonyGoals } from './goals';
-import { JOB_POST_COOLDOWN, linkJobPosts, postSeenWork, synchronizeJobPosts } from './posted-jobs';
+import {
+  JOB_POST_COOLDOWN,
+  linkJobPosts,
+  postSeenWork,
+  synchronizeJobPosts,
+  postHousingWork,
+} from './posted-jobs';
+import { advanceHousing, HOUSING_INTERVAL } from './housing';
 import { advanceEcology } from './ecology';
 import { advanceColonistHealth, colonistDeathCause } from './health';
 import { advanceRelationships, ensureRelationships } from './relationships';
 import { advanceFamilies, initializeFamily, updateChildNeeds } from './family';
 import { isAdult } from './health';
+import { recordLoss, remember } from './psychology';
+import { DAY_TICKS } from './definitions';
 
 export interface WorldFeedback {
   entityId: string;
@@ -143,9 +152,19 @@ export class Simulation {
         }
       }
     }
+    if (w.tick % HOUSING_INTERVAL === 0) advanceHousing(w, this.grid);
     if (this.dirty || w.tick % 10 === 0) {
       const candidates = workCandidates(w);
       synchronizeJobPosts(w, candidates);
+      for (const post of postHousingWork(w, candidates)) {
+        this.diagnostics.record(w, 'JOB_POSTED', {
+          entityId: post.postedBy,
+          targetId: post.targetId,
+          jobId: post.id,
+          jobType: post.kind,
+          reason: 'household housing need',
+        });
+      }
       for (const pawn of w.pawns) {
         if (!pawn.job || w.tick - (this.lastJobPost.get(pawn.id) ?? -Infinity) < JOB_POST_COOLDOWN)
           continue;
@@ -180,6 +199,16 @@ export class Simulation {
         updateWetness(w, pawn, 1, this.diagnostics);
         updateNeeds(w, pawn);
         advanceColonistHealth(w, pawn, 10);
+        for (const injury of pawn.injuries)
+          if (injury.inflictedAt > w.tick - 10)
+            remember(
+              w,
+              pawn,
+              'injury',
+              `Recovering from a ${injury.kind}`,
+              -4 - injury.severity / 10,
+              DAY_TICKS * 2,
+            );
         updateChildNeeds(w, pawn);
         if (hungerBefore >= 35 && pawn.hunger < 35)
           this.diagnostics.record(w, 'HUNGER_THRESHOLD_CROSSED', {
@@ -321,6 +350,7 @@ export class Simulation {
     for (const pawn of [...w.pawns]) {
       const cause = colonistDeathCause(pawn);
       if (!cause) continue;
+      recordLoss(w, pawn);
       interruptJob(w, pawn, this.reservations, this.diagnostics, `death: ${cause}`);
       for (const bed of w.buildings) if (bed.ownerId === pawn.id) bed.ownerId = undefined;
       w.jobPosts = w.jobPosts.filter(
@@ -342,9 +372,9 @@ export class Simulation {
     if (w.tick % 10 === 0) {
       const goals = completeColonyGoals(w);
       if (goals.length) {
-        for (const pawn of w.pawns)
-          pawn.moodBias = Math.min(20, (pawn.moodBias ?? 0) + 3 * goals.length);
         for (const goal of goals) {
+          for (const pawn of w.pawns)
+            remember(w, pawn, `milestone:${goal.id}`, goal.completedText, 3, DAY_TICKS * 2);
           emit(w, `Milestone: ${goal.completedText}`, 'success');
           this.diagnostics.record(w, 'COLONY_GOAL_COMPLETED', {
             reason: goal.id,

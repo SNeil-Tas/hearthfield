@@ -50,8 +50,9 @@ export function findPath(
   grid = navigationGrid(w),
 ): Point[] | null {
   const start = { x: Math.round(from.x), y: Math.round(from.y) };
-  if (!inside(w, start) || !inside(w, to)) return null;
-  const goals = adjacent ? cardinalNeighbours(to) : [to];
+  const target = { x: Math.round(to.x), y: Math.round(to.y) };
+  if (!inside(w, start) || !inside(w, target)) return null;
+  const goals = adjacent ? cardinalNeighbours(target) : [target];
   const valid = goals.filter((p) => inside(w, p) && grid[tileKey(w, p)] === 1);
   if (!valid.length) return null;
   const direct = (goal: Point, horizontalFirst: boolean) => {

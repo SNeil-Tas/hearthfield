@@ -20,9 +20,10 @@ import { MAX_LIFESPAN, MIN_LIFESPAN, YEAR_TICKS } from '../sim/health';
 import { ensureRelationships, relationshipTier } from '../sim/relationships';
 import { initializeFamily, MAX_COLONISTS, GESTATION_TICKS, closeKin } from '../sim/family';
 import { isAdult } from '../sim/health';
+import { createPsychology, EMOTIONAL_NEEDS, MEMORY_LIMIT, TRAITS } from '../sim/psychology';
 
 export interface SaveEnvelope {
-  version: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
+  version: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11;
   savedAt: number;
   checksum: string;
   payload: string;
@@ -34,7 +35,7 @@ export function checksum(text: string) {
 }
 export function encode(w: World): SaveEnvelope {
   const payload = JSON.stringify(w);
-  return { version: 9, savedAt: Date.now(), checksum: checksum(payload), payload };
+  return { version: 11, savedAt: Date.now(), checksum: checksum(payload), payload };
 }
 function migrate(world: any, version: SaveEnvelope['version']) {
   const needsWildlife = !Array.isArray(world.animals);
@@ -61,6 +62,7 @@ function migrate(world: any, version: SaveEnvelope['version']) {
   world.weatherUntil ??= world.tick + 1800;
   world.weatherStartedAt ??= world.tick;
   world.jobPosts ??= [];
+  if (version <= 9) world.housingProjects ??= [];
   world.completedGoals ??= [];
   if (version === 1) {
     world.crops ??= [];
@@ -120,11 +122,19 @@ function migrate(world: any, version: SaveEnvelope['version']) {
     }
   }
   for (const pawn of world.pawns ?? []) {
+    if (version <= 10) {
+      pawn.psychology = createPsychology(world.seed, pawn.id);
+      pawn.moodBias =
+        typeof pawn.moodBias === 'number' && Number.isFinite(pawn.moodBias)
+          ? Math.max(-15, Math.min(15, pawn.moodBias))
+          : 0;
+    }
     pawn.rotExposure ??= 0;
     pawn.wetness ??= 0;
     pawn.rotHandledPenalty ??= 0;
     pawn.knowledge ??= {};
     pawn.knowledge.agriculture ??= 8;
+    if (version <= 9) pawn.knowledge.building ??= pawn.skills?.build ?? 0;
     pawn.ageTicks ??= 30 * YEAR_TICKS;
     pawn.lifespanYears ??= 82;
     pawn.injuries ??= [];
@@ -229,6 +239,7 @@ export function validateWorld(value: unknown): asserts value is World {
     'pawns',
     'events',
     'jobPosts',
+    'housingProjects',
   ] as const)
     if (!Array.isArray(w[name]) || w[name].length > 50000) throw new Error(`Invalid ${name}.`);
   if (w.terrain.length !== w.width * w.height || w.terrain.some((t) => !Object.hasOwn(TERRAIN, t)))
@@ -250,6 +261,7 @@ export function validateWorld(value: unknown): asserts value is World {
     ...w.buildings,
     ...w.blueprints,
     ...w.pawns,
+    ...w.housingProjects,
   ];
   for (const e of entities) {
     if (
@@ -338,7 +350,41 @@ export function validateWorld(value: unknown): asserts value is World {
   )
     throw new Error('Invalid water salinity.');
   for (const b of [...w.buildings, ...w.blueprints])
-    if (!Object.hasOwn(BUILDINGS, b.kind)) throw new Error('Invalid building.');
+    if (
+      !Object.hasOwn(BUILDINGS, b.kind) ||
+      (b.ownerId !== undefined && !/^pawn-\d+$/.test(b.ownerId)) ||
+      (b.housingProjectId !== undefined && !/^home-\d+$/.test(b.housingProjectId))
+    )
+      throw new Error('Invalid building.');
+  const housingMembers = new Set<string>();
+  if (w.housingProjects.length > 3) throw new Error('Invalid housing projects.');
+  for (const project of w.housingProjects) {
+    if (
+      !/^home-\d+$/.test(project.id) ||
+      !/^pawn-\d+$/.test(project.requestedBy) ||
+      !integer(project.x, 0, w.width - 1) ||
+      !integer(project.y, 0, w.height - 1) ||
+      !integer(project.createdAt, 0, w.tick) ||
+      !finite(project.designWork, 0, 1000000) ||
+      !integer(project.retryAt, 0, Number.MAX_SAFE_INTEGER) ||
+      (project.design !== undefined &&
+        !['beds', 'shelter', 'cottage', 'house'].includes(project.design)) ||
+      (project.designerId !== undefined && !/^pawn-\d+$/.test(project.designerId)) ||
+      !Array.isArray(project.memberIds) ||
+      project.memberIds.length < 1 ||
+      project.memberIds.length > 8 ||
+      !Array.isArray(project.timberIds) ||
+      project.timberIds.length > 50000 ||
+      new Set(project.timberIds).size !== project.timberIds.length ||
+      project.timberIds.some((id) => typeof id !== 'string' || !/^node-\d+$/.test(id))
+    )
+      throw new Error('Invalid housing project.');
+    for (const id of project.memberIds) {
+      if (typeof id !== 'string' || !/^pawn-\d+$/.test(id) || housingMembers.has(id))
+        throw new Error('Invalid housing household.');
+      housingMembers.add(id);
+    }
+  }
   for (const b of w.blueprints)
     if (!integer(b.delivered, 0, BUILDINGS[b.kind].cost) || !finite(b.work, 0, 1000000))
       throw new Error('Invalid blueprint.');
@@ -424,6 +470,35 @@ export function validateWorld(value: unknown): asserts value is World {
       throw new Error('Invalid colonist identity.');
     if (['health', 'hunger', 'rest', 'mood'].some((k) => !finite(p[k as 'health'], 0, 100)))
       throw new Error('Invalid needs.');
+    const psych = p.psychology;
+    if (
+      !psych ||
+      !psych.traits ||
+      !psych.needs ||
+      TRAITS.some((trait) => !finite(psych.traits[trait], 0, 100)) ||
+      EMOTIONAL_NEEDS.some((need) => !finite(psych.needs[need], 0, 100)) ||
+      !Object.hasOwn(WORK, psych.preferredWork) ||
+      !finite(psych.stress, 0, 100) ||
+      typeof psych.overwhelmed !== 'boolean' ||
+      !integer(psych.nextCopingAt, 0, Number.MAX_SAFE_INTEGER) ||
+      !Array.isArray(psych.memories) ||
+      psych.memories.length > MEMORY_LIMIT ||
+      psych.memories.some(
+        (memory) =>
+          !memory ||
+          typeof memory.key !== 'string' ||
+          memory.key.length < 1 ||
+          memory.key.length > 100 ||
+          typeof memory.text !== 'string' ||
+          memory.text.length > 200 ||
+          !finite(memory.impact, -20, 20) ||
+          !integer(memory.createdAt, 0, w.tick) ||
+          !integer(memory.expiresAt, memory.createdAt + 1, Number.MAX_SAFE_INTEGER),
+      ) ||
+      new Set(psych.memories.map((m) => m.key)).size !== psych.memories.length ||
+      (p.moodBias !== undefined && !finite(p.moodBias, -20, 20))
+    )
+      throw new Error('Invalid psychological profile.');
     if (
       !integer(p.ageTicks, 0, MAX_LIFESPAN * YEAR_TICKS) ||
       !integer(p.lifespanYears, MIN_LIFESPAN, MAX_LIFESPAN) ||
@@ -450,8 +525,17 @@ export function validateWorld(value: unknown): asserts value is World {
         !integer(p.priorities[type], 0, 4)
       )
         throw new Error('Invalid work profile.');
-    if (!p.knowledge || !integer(p.knowledge.agriculture, 0, 20))
+    if (
+      !p.knowledge ||
+      !integer(p.knowledge.agriculture, 0, 20) ||
+      !integer(p.knowledge.building, 0, 20)
+    )
       throw new Error('Invalid knowledge profile.');
+    if (
+      p.nextHousingAttempt !== undefined &&
+      !integer(p.nextHousingAttempt, 0, Number.MAX_SAFE_INTEGER)
+    )
+      throw new Error('Invalid housing retry.');
     if (p.carrying !== null && (!p.carrying || !validStack(p.carrying)))
       throw new Error('Invalid carried item.');
   }
@@ -498,6 +582,7 @@ export function validateWorld(value: unknown): asserts value is World {
         post.key.length > 300 ||
         !Object.hasOwn(JOB_LABELS, post.kind) ||
         !Object.hasOwn(WORK, post.work) ||
+        (post.housingProjectId !== undefined && !/^home-\d+$/.test(post.housingProjectId)) ||
         !pawnIds.has(post.postedBy) ||
         (post.claimedBy !== undefined && !pawnIds.has(post.claimedBy)) ||
         !integer(post.postedAt, 0, w.tick) ||
@@ -519,7 +604,7 @@ export function validateWorld(value: unknown): asserts value is World {
 export function decode(raw: unknown): { world: World; savedAt: number } {
   if (!raw || typeof raw !== 'object') throw new Error('Unrecognised save.');
   const e = raw as SaveEnvelope;
-  if (![1, 2, 3, 4, 5, 6, 7, 8, 9].includes(e.version))
+  if (![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].includes(e.version))
     throw new Error('This save needs a different game version.');
   if (
     typeof e.payload !== 'string' ||

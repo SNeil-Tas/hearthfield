@@ -19,6 +19,9 @@ export function flatWorld(): World {
   w.stockpiles = [];
   w.events = [];
   for (const [i, p] of w.pawns.entries()) {
+    // Existing focused tests exercise work without autonomous settlement expansion.
+    // Housing integration tests explicitly enable household planning in this arena.
+    p.nextHousingAttempt = Number.MAX_SAFE_INTEGER;
     p.x = 2 + i;
     p.y = 3;
     p.hunger = p.rest = p.health = p.mood = 100;

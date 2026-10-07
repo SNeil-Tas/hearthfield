@@ -1,5 +1,6 @@
 import type { Pawn, Relationship, RelationshipTier, World } from './types';
 import { distance } from './world';
+import { recordConversation, sharesSocialSpace } from './psychology';
 
 export const SOCIAL_INTERVAL = 300;
 export const SOCIAL_DISTANCE = 4;
@@ -21,7 +22,19 @@ function hash(seed: number, text: string) {
 }
 
 function compatibility(w: World, observer: Pawn, target: Pawn) {
-  return (hash(w.seed, `${observer.id}>${target.id}`) % 101) / 100 - 0.35;
+  const first = observer.psychology.traits,
+    second = target.psychology.traits;
+  const sharedOutlook =
+    1 -
+    (Math.abs(first.sociability - second.sociability) +
+      Math.abs(first.curiosity - second.curiosity)) /
+      100;
+  return (
+    (hash(w.seed, `${observer.id}>${target.id}`) % 101) / 100 -
+    0.5 +
+    sharedOutlook * 0.25 +
+    (second.empathy - 50) / 180
+  );
 }
 
 export function relationshipTier(opinion: number, familiarity: number): RelationshipTier {
@@ -70,7 +83,8 @@ function updateOpinion(w: World, observer: Pawn, target: Pawn, cycle: number) {
   const relationship = relationshipBetween(observer, target.id)!;
   const jitter = (hash(w.seed ^ cycle, `${observer.id}:${target.id}`) % 5) - 2;
   const disposition = compatibility(w, observer, target) * 2.4;
-  const strain = (observer.mood + target.mood) / 2 < 35 ? -1 : 0;
+  const strain =
+    ((observer.mood + target.mood) / 2 < 35 ? -1 : 0) - (observer.psychology.stress > 65 ? 0.8 : 0);
   const delta = clamp(Math.round(disposition + jitter + 0.45 + strain), -3, 3);
   relationship.opinion = clamp(relationship.opinion + delta, -100, 100);
   relationship.familiarity = clamp(relationship.familiarity + 5, 0, 100);
@@ -94,6 +108,7 @@ export function advanceRelationships(w: World): SocialInteraction[] {
         (candidate) =>
           candidate.id !== first.id &&
           available.has(candidate.id) &&
+          sharesSocialSpace(w, first, candidate) &&
           distance(first, candidate) <= SOCIAL_DISTANCE,
       )
       .sort((a, b) => distance(first, a) - distance(first, b) || a.id.localeCompare(b.id))[0];
@@ -103,6 +118,8 @@ export function advanceRelationships(w: World): SocialInteraction[] {
     const before = mutualTier(first, second);
     const firstDelta = updateOpinion(w, first, second, cycle);
     const secondDelta = updateOpinion(w, second, first, cycle);
+    recordConversation(w, first, second, firstDelta);
+    recordConversation(w, second, first, secondDelta);
     const after = mutualTier(first, second);
     interactions.push({
       first,

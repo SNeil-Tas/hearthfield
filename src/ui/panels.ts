@@ -1,3 +1,4 @@
+import { housingStatus } from '../sim/housing';
 import { roomTopology } from '../sim/topology';
 import { isRainExposed, wetnessBand } from '../sim/weather';
 import {
@@ -37,6 +38,7 @@ import {
   LIFE_STAGE_LABELS,
 } from '../sim/health';
 import { relationshipMoodEffect } from '../sim/relationships';
+import { psychologyContextHTML } from './psychology-context';
 
 const toolButton = (tool: string, label: string, detail: string, symbol = tool) =>
   `<button class="catalogue-item" data-action="tool" data-value="${tool}"><span class="catalogue-icon">${icon(symbol)}</span><span><strong>${label}</strong><small>${detail}</small></span><span class="chevron">›</span></button>`;
@@ -75,10 +77,10 @@ export function panelHTML(panel: Panel, w: World, debug: boolean) {
               const claimant = post.claimedBy
                 ? w.pawns.find((pawn) => pawn.id === post.claimedBy)?.name
                 : undefined;
-              return `<article class="job-post ${claimant ? 'claimed' : ''}"><i></i><div><strong>${esc(JOB_LABELS[post.kind])}</strong><small>Posted by ${esc(poster)} · ${Math.max(0, Math.floor((w.tick - post.postedAt) / 10))}s ago</small></div><span>${claimant ? `${esc(claimant)} is on it` : 'OPEN'}</span></article>`;
+              return `<article class="job-post ${claimant ? 'claimed' : ''}"><i></i><div><strong>${esc(JOB_LABELS[post.kind])}</strong><small>Posted by ${esc(poster)}${post.housingProjectId ? ' · Household housing' : ''} · ${Math.max(0, Math.floor((w.tick - post.postedAt) / 10))}s ago</small></div><span>${claimant ? `${esc(claimant)} is on it` : 'OPEN'}</span></article>`;
             })
             .join('')
-        : '<p>No posted work yet. Busy colonists will add nearby jobs they cannot get to.</p>';
+        : '<p>No posted work yet. Colonists request help with housing and nearby work.</p>';
       const board = `<section class="job-board"><header><div><span class="eyebrow">COLONY HANDOFFS</span><h3>Job board</h3></div><b>${w.jobPosts.filter((post) => !post.claimedBy).length} open</b></header>${posts}</section>`;
       return (
         heading('EVERYONE HAS A PART TO PLAY', 'Work priorities') +
@@ -94,7 +96,7 @@ export function panelHTML(panel: Panel, w: World, debug: boolean) {
               )
                 .map((type) => {
                   const t = type as keyof typeof WORK;
-                  return `<td><button ${!isAdult(p) ? 'disabled title="Dependent until age 18"' : ''} data-action="priority" data-value="${p.id}:${t}" aria-label="${esc(p.name)} ${WORK[t]} priority ${p.priorities[t] || 'off'}"><b class="priority-${p.priorities[t]}">${p.priorities[t] || '—'}</b><small>skill ${p.skills[t]}${t === 'plants' ? ` · knowledge ${p.knowledge.agriculture}` : ''}</small></button></td>`;
+                  return `<td><button ${!isAdult(p) ? 'disabled title="Dependent until age 18"' : ''} data-action="priority" data-value="${p.id}:${t}" aria-label="${esc(p.name)} ${WORK[t]} priority ${p.priorities[t] || 'off'}"><b class="priority-${p.priorities[t]}">${p.priorities[t] || '—'}</b><small>skill ${p.skills[t]}${t === 'plants' ? ` · knowledge ${p.knowledge.agriculture}` : t === 'build' ? ` · knowledge ${p.knowledge.building}` : ''}</small></button></td>`;
                 })
                 .join('')}</tr>`,
           )
@@ -202,7 +204,7 @@ export function contextHTML(w: World, ui: UIState, owner?: string) {
     const partner = w.pawns.find((other) => other.id === p.partnerId);
     const caregiver = w.pawns.find((other) => other.id === p.caregiverId);
     const family = `<p>${LIFE_STAGE_LABELS[lifeStage(p)]} · ${p.sex} · ${p.orientation}<br>Partner: ${partner ? esc(partner.name) : 'None'}${p.pregnancy ? `<br>Expecting a baby · due in ${Math.max(0, Math.ceil((p.pregnancy.dueAt - w.tick) / DAY_TICKS))} days` : ''}${!isAdult(p) ? `<br>Needs shelter and adult care until age 18.<br>Shelter: ${roomTopology(w).isIndoors(p) ? 'Indoors' : 'Needed'} · Caregiver: ${caregiver ? esc(caregiver.name) : 'Needed'}` : ''}<br>Aging begins at ${p.agingOnsetYears} · age-related work ${Math.round(agingWorkMultiplier(p) * 100)}% · movement ${Math.round(agingMovementMultiplier(p) * 100)}%</p>`;
-    content = `<span class="eyebrow">COLONIST · ${esc(moodLabel.toUpperCase())}</span><h3>${esc(p.name)}</h3><p class="job-status">${p.job ? JOB_LABELS[p.job.kind] : !isAdult(p) ? 'Growing up · awaiting adult care' : 'Taking a breather'}${p.carrying ? ` · ${p.carrying.quantity} ${p.carrying.resource}` : ''}</p><div class="needs">${meter('Food', p.hunger)}${meter('Rest', p.rest)}${meter('Health', p.health)}${!isAdult(p) ? meter('Care', p.care) : ''}</div>${family}<p>Age: ${ageYears(p)} · lifespan: ${p.lifespanYears}<br>Injuries: ${esc(injuries)}<br>Hunger drain ${(p.activity === 'hauling' ? 3.8 : p.activity === 'heavy-work' ? 3.3 : 2.7).toFixed(1)} / hour · ${p.activity ?? 'resting'}<br>Mood: ${moodLabel} · work speed ${Math.round((p.productivity ?? 1) * 100)}%${socialMood ? ` · social ${socialMood > 0 ? '+' : ''}${socialMood.toFixed(1)}` : ''}${p.illnessUntil && p.illnessUntil > w.tick ? ' · mildly ill' : ''}<br>Plants skill: ${p.skills.plants} · Agriculture knowledge: ${p.knowledge.agriculture}</p><section class="relationships"><span class="eyebrow">RELATIONSHIPS</span>${relationships || '<p>No other colonists.</p>'}</section><button class="text-button" data-action="panel" data-value="work">Manage work priorities <span>↗</span></button><button class="text-button" data-action="copy-debug">Copy Selected Colonist Debug <span>↗</span></button>`;
+    content = `<span class="eyebrow">COLONIST · ${esc(moodLabel.toUpperCase())}</span><h3>${esc(p.name)}</h3><p class="job-status">${p.job ? JOB_LABELS[p.job.kind] : !isAdult(p) ? 'Growing up · awaiting adult care' : 'Taking a breather'}${p.carrying ? ` · ${p.carrying.quantity} ${p.carrying.resource}` : ''}</p><div class="needs">${meter('Food', p.hunger)}${meter('Rest', p.rest)}${meter('Health', p.health)}${!isAdult(p) ? meter('Care', p.care) : ''}</div>${psychologyContextHTML(w, p)}${family}<p><b>Housing:</b> ${esc(housingStatus(w, p))}<br>Build skill: ${p.skills.build} · Building knowledge: ${p.knowledge.building}</p><p>Age: ${ageYears(p)} · lifespan: ${p.lifespanYears}<br>Injuries: ${esc(injuries)}<br>Hunger drain ${(p.activity === 'hauling' ? 3.8 : p.activity === 'heavy-work' ? 3.3 : 2.7).toFixed(1)} / hour · ${p.activity ?? 'resting'}<br>Mood: ${moodLabel} · work speed ${Math.round((p.productivity ?? 1) * 100)}%${socialMood ? ` · social ${socialMood > 0 ? '+' : ''}${socialMood.toFixed(1)}` : ''}${p.illnessUntil && p.illnessUntil > w.tick ? ' · mildly ill' : ''}<br>Plants skill: ${p.skills.plants} · Agriculture knowledge: ${p.knowledge.agriculture}</p><section class="relationships"><span class="eyebrow">RELATIONSHIPS</span>${relationships || '<p>No other colonists.</p>'}</section><button class="text-button" data-action="panel" data-value="work">Manage work priorities <span>↗</span></button><button class="text-button" data-action="copy-debug">Copy Selected Colonist Debug <span>↗</span></button>`;
   } else if (animal) {
     const def = ANIMALS[animal.species];
     const stage = animalStage(animal);

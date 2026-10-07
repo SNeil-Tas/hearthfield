@@ -427,6 +427,8 @@ describe('v0.9 irrigation judgement and salinity', () => {
       false,
     );
     const { w } = judgementWorld();
+    // Isolate knowledge from individual work preferences.
+    w.pawns[1]!.psychology = structuredClone(w.pawns[0]!.psychology);
     const candidate = {
       kind: 'harvest' as const,
       destination: { x: 5, y: 5 },
@@ -668,7 +670,7 @@ describe('save compatibility and accounting', () => {
     w.waterSalinity.push({ key: waterKey, salinity: BRACKISH_WATER_SALINITY });
     dropSeed(w, { x: 2, y: 2 }, 'potato', 3);
     const saved = encode(w);
-    expect(saved.version).toBe(9);
+    expect(saved.version).toBe(11);
     const loaded = decode(saved).world;
     expect(loaded.agriculture[0]!.cropType).toBe('potato');
     expect(loaded.crops[0]!.growth).toBe(0.43);

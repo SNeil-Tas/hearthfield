@@ -1,4 +1,5 @@
-import { DAY_TICKS } from './definitions';
+import { BUILDINGS, DAY_TICKS } from './definitions';
+import { createPsychology, remember } from './psychology';
 import { emit } from './events';
 import {
   DEFAULT_AGING_ONSET,
@@ -14,7 +15,7 @@ import { ensureRelationships, relationshipBetween, SOCIAL_INTERVAL } from './rel
 import type { Reservations } from './reservations';
 import { roomTopology } from './topology';
 import type { Pawn, World } from './types';
-import { distance, foodType, freshPoints, isFoodSpoiled, nextId } from './world';
+import { distance, foodType, freshPoints, isFoodSpoiled, nextId, sameTile } from './world';
 
 export const GESTATION_TICKS = Math.round(YEAR_TICKS * 0.75);
 export const BIRTH_SPACING_TICKS = YEAR_TICKS;
@@ -113,13 +114,24 @@ export function advanceFamilies(w: World) {
       hunger: 85,
       rest: 90,
       mood: 90,
+      psychology: createPsychology(w.seed, id),
       skills: { plants: 0, build: 0, haul: 0, cook: 0 },
-      knowledge: { agriculture: 0 },
+      knowledge: { agriculture: 0, building: 0 },
       priorities: { plants: 3, build: 3, haul: 3, cook: 3 },
       job: null,
       carrying: null,
     };
     w.pawns.push(child);
+    remember(w, pawn, `birth:${id}`, `Welcomed ${child.name} into the family`, 10, DAY_TICKS * 3);
+    if (other)
+      remember(
+        w,
+        other,
+        `birth:${id}`,
+        `Welcomed ${child.name} into the family`,
+        10,
+        DAY_TICKS * 3,
+      );
     pawn.pregnancy = undefined;
     pawn.nextConceptionAt = w.tick + BIRTH_SPACING_TICKS;
     emit(
@@ -148,6 +160,8 @@ export function advanceFamilies(w: World) {
     if (!second) continue;
     first.partnerId = second.id;
     second.partnerId = first.id;
+    remember(w, first, 'partnership', `Found companionship with ${second.name}`, 8, DAY_TICKS * 2);
+    remember(w, second, 'partnership', `Found companionship with ${first.name}`, 8, DAY_TICKS * 2);
     emit(w, `${first.name} and ${second.name} became romantic partners.`, 'success');
   }
   if (w.tick % DAY_TICKS !== 0) return;
@@ -195,19 +209,47 @@ export function updateChildNeeds(w: World, child: Pawn) {
       0,
       child.health - (!sheltered ? 0.015 : 0) - (child.care < 20 ? 0.08 : 0),
     );
-  child.rest = Math.min(100, child.rest + (sheltered ? 0.08 : 0.02));
+  const inBed = w.buildings.some(
+    (b) => b.kind === 'bed' && b.ownerId === child.id && !b.deconstructing && sameTile(b, child),
+  );
+  child.rest = Math.min(100, child.rest + (sheltered && inBed ? 0.3 : sheltered ? 0.08 : 0.02));
   child.mood = Math.max(0, child.mood - (sheltered ? 0 : 12) - (child.care < 30 ? 15 : 0));
 }
 
-export function childShelter(w: World, child: Pawn, grid: Uint8Array) {
+export function childNeedsBed(w: World, child: Pawn) {
+  return (
+    child.rest < 50 &&
+    w.buildings.some(
+      (b) =>
+        b.kind === 'bed' &&
+        b.ownerId === child.id &&
+        !b.deconstructing &&
+        roomTopology(w).isIndoors(b) &&
+        !sameTile(b, child),
+    )
+  );
+}
+
+export function childShelter(w: World, child: Pawn, grid: Uint8Array, from = child) {
   const topology = roomTopology(w);
+  const bed = w.buildings.find(
+    (b) => b.kind === 'bed' && b.ownerId === child.id && !b.deconstructing && topology.isIndoors(b),
+  );
+  if (bed) {
+    const path = findPath(w, from, bed, false, grid);
+    if (path !== null) return { destination: { x: bed.x, y: bed.y }, path };
+  }
   const places = topology.rooms
     .flatMap((room) => room.tiles)
     .map((key) => ({ x: key % w.width, y: Math.floor(key / w.width) }))
-    .filter((point) => topology.isIndoors(point))
+    .filter(
+      (point) =>
+        topology.isIndoors(point) &&
+        !w.blueprints.some((b) => BUILDINGS[b.kind].blocks && sameTile(b, point)),
+    )
     .sort((a, b) => distance(child, a) - distance(child, b));
   for (const destination of places) {
-    const path = findPath(w, child, destination, false, grid);
+    const path = findPath(w, from, destination, false, grid);
     if (path !== null) return { destination, path };
   }
   return undefined;
@@ -225,6 +267,7 @@ export function assignCareJob(w: World, adult: Pawn, reservations: Reservations,
       (p) =>
         p.care < 65 ||
         p.hunger < 60 ||
+        childNeedsBed(w, p) ||
         (!roomTopology(w).isIndoors(p) && roomTopology(w).rooms.length > 0),
     )
     .sort(
@@ -255,6 +298,7 @@ export function assignCareJob(w: World, adult: Pawn, reservations: Reservations,
     if (
       !food &&
       child.care >= 65 &&
+      !childNeedsBed(w, child) &&
       (roomTopology(w).isIndoors(child) || !childShelter(w, child, grid))
     )
       continue;

@@ -4,6 +4,7 @@ import { wetnessMoodPenalty } from './weather';
 import { agingWorkMultiplier, injuryWorkMultiplier, isAdult } from './health';
 import { roomTopology } from './topology';
 import { relationshipMoodEffect } from './relationships';
+import { psychologicalMood, psychologicalWorkMultiplier, updatePsychology } from './psychology';
 const costs: Record<ActivityKind, [number, number]> = {
   sleeping: [0.22, 0],
   resting: [0.32, 0.05],
@@ -19,19 +20,22 @@ export function updateNeeds(w: World, pawn: Pawn) {
     ? 'hauling'
     : kind === 'sleep'
       ? 'sleeping'
-      : !kind
+      : !kind || (kind === 'relax' && !pawn.job?.path.length)
         ? 'resting'
-        : ['build', 'deconstruct', 'chop'].includes(kind)
-          ? 'heavy-work'
-          : ['gather', 'harvest', 'sow', 'cook'].includes(kind)
-            ? 'working'
-            : 'walking';
+        : kind === 'design'
+          ? 'light-work'
+          : ['build', 'deconstruct', 'chop'].includes(kind)
+            ? 'heavy-work'
+            : ['gather', 'harvest', 'sow', 'cook'].includes(kind)
+              ? 'working'
+              : 'walking';
   const [hungerCost, restCost] = costs[activity];
   const ill = pawn.illnessUntil !== undefined && pawn.illnessUntil > w.tick;
   pawn.activity = activity;
   const moodMetabolism = pawn.mood < 30 ? 1.22 : pawn.mood < 60 ? 1.1 : 1;
   pawn.productivity =
     agingWorkMultiplier(pawn) *
+    psychologicalWorkMultiplier(pawn) *
     Math.max(
       0.55,
       (pawn.mood < 30 ? 0.8 : pawn.mood < 60 ? 0.9 : 1) *
@@ -59,6 +63,7 @@ export function updateNeeds(w: World, pawn: Pawn) {
   const exposurePenalty = pawn.rotExposure >= 60 ? -4 : pawn.rotExposure >= 20 ? -2 : 0;
   const handledPenalty =
     pawn.rotHandledUntil && pawn.rotHandledUntil > w.tick ? -(pawn.rotHandledPenalty ?? 2) : 0;
+  updatePsychology(w, pawn);
   pawn.mood = Math.max(
     0,
     Math.min(
@@ -68,6 +73,7 @@ export function updateNeeds(w: World, pawn: Pawn) {
           pawn.rest * 0.4 +
           pawn.health * 0.15 +
           (pawn.moodBias ?? 0) +
+          psychologicalMood(w, pawn) +
           exposurePenalty +
           handledPenalty +
           relationshipMoodEffect(pawn) +
@@ -79,6 +85,7 @@ export function updateNeeds(w: World, pawn: Pawn) {
 }
 export function shouldInterrupt(pawn: Pawn) {
   if (!pawn.job) return false;
+  if (pawn.job.kind === 'relax' && (pawn.hunger < 38 || pawn.rest < 28)) return true;
   if (
     pawn.hunger < 20 &&
     !['eat', 'gather', 'cook', 'separate'].includes(pawn.job.kind) &&

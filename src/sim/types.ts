@@ -58,7 +58,30 @@ export interface Relationship {
 export type BuildingKind = 'wall' | 'door' | 'bed' | 'cooking';
 export type NodeKind = 'tree' | 'stone' | 'berries';
 export type WorkType = 'plants' | 'haul' | 'build' | 'cook';
+export type PersonalityTrait =
+  'sociability' | 'resilience' | 'diligence' | 'curiosity' | 'sensitivity' | 'empathy';
+export type EmotionalNeed =
+  'belonging' | 'recreation' | 'privacy' | 'purpose' | 'security' | 'comfort';
+export type CopingActivity = 'company' | 'recreation' | 'solitude';
+export interface EmotionalMemory {
+  key: string;
+  text: string;
+  impact: number;
+  createdAt: number;
+  expiresAt: number;
+}
+export interface Psychology {
+  traits: Record<PersonalityTrait, number>;
+  needs: Record<EmotionalNeed, number>;
+  preferredWork: WorkType;
+  stress: number;
+  overwhelmed: boolean;
+  nextCopingAt: number;
+  memories: EmotionalMemory[];
+}
 export type JobKind =
+  | 'relax'
+  | 'design'
   | 'care'
   | 'chop'
   | 'gather'
@@ -144,6 +167,7 @@ export interface Building extends Point {
   kind: BuildingKind;
   deconstructing?: boolean;
   ownerId?: string;
+  housingProjectId?: string;
   ingredientFresh?: number;
   cookingProgress?: number;
   reservedBy?: string;
@@ -153,6 +177,8 @@ export interface Blueprint extends Building {
   work: number;
 }
 export interface Job {
+  copingActivity?: CopingActivity;
+  personalHousingPlan?: boolean;
   escortingChild?: boolean;
   kind: JobKind;
   sourceId?: string;
@@ -175,6 +201,7 @@ export interface Job {
   postedJobId?: string;
 }
 export interface PostedJob {
+  housingProjectId?: string;
   id: string;
   key: string;
   kind: JobKind;
@@ -187,6 +214,7 @@ export interface PostedJob {
   claimedBy?: string;
 }
 export interface Pawn extends Point {
+  nextHousingAttempt?: number;
   id: string;
   name: string;
   color: string;
@@ -211,8 +239,9 @@ export interface Pawn extends Point {
   hunger: number;
   rest: number;
   mood: number;
+  psychology: Psychology;
   skills: Record<WorkType, number>;
-  knowledge: { agriculture: number };
+  knowledge: { agriculture: number; building: number };
   priorities: Record<WorkType, number>;
   job: Job | null;
   carrying: Stack | null;
@@ -230,7 +259,20 @@ export interface GameEvent {
   text: string;
   kind: 'info' | 'warning' | 'success';
 }
+export type HousingDesign = 'shelter' | 'cottage' | 'house' | 'beds';
+export interface HousingProject extends Point {
+  id: string;
+  requestedBy: string;
+  memberIds: string[];
+  createdAt: number;
+  designWork: number;
+  design?: HousingDesign;
+  designerId?: string;
+  retryAt: number;
+  timberIds: string[];
+}
 export interface World {
+  housingProjects: HousingProject[];
   seed: number;
   landscape: Landscape;
   width: number;

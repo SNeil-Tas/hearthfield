@@ -13,6 +13,7 @@ import { COOKING_INPUT } from './definitions';
 import { claimJobPost } from './posted-jobs';
 import { isAdult } from './health';
 import { assignCareJob } from './family';
+import { COPING_COOLDOWN, psychologicalCareCandidates } from './psychology-care';
 
 export function assignJob(
   w: World,
@@ -27,15 +28,32 @@ export function assignJob(
   if (assignCareJob(w, pawn, reservations, grid)) return;
   const tier = (c: Candidate) =>
     c.work
-      ? 4
-      : c.kind === 'eat'
-        ? w.items.find((i) => i.id === c.sourceId)?.foodType === 'meal'
-          ? 0
-          : 1
-        : c.personalFoodPlan || c.kind === 'gather'
-          ? 2
-          : 3;
-  const candidates = [...needCandidates(w, pawn), ...board]
+      ? c.personalHousingPlan
+        ? 5
+        : 6
+      : c.kind === 'relax'
+        ? 4
+        : c.kind === 'eat'
+          ? w.items.find((i) => i.id === c.sourceId)?.foodType === 'meal'
+            ? 0
+            : 1
+          : c.personalFoodPlan || c.kind === 'gather'
+            ? 2
+            : 3;
+  const personalProjects = new Set(
+    w.housingProjects
+      .filter((p) => p.requestedBy === pawn.id || p.memberIds.includes(pawn.id))
+      .map((p) => p.id),
+  );
+  const candidates = [
+    ...needCandidates(w, pawn),
+    ...psychologicalCareCandidates(w, pawn, grid),
+    ...board.map((c) =>
+      c.housingProjectId && personalProjects.has(c.housingProjectId)
+        ? { ...c, personalHousingPlan: true }
+        : c,
+    ),
+  ]
     .flatMap((c) => {
       const candidate = resolveCandidateForPawn(pawn, c);
       return candidate ? [{ candidate, rank: rankCandidate(pawn, candidate) }] : [];
@@ -151,6 +169,7 @@ export function assignJob(
     }
     pawn.job = {
       kind: c.kind,
+      copingActivity: c.copingActivity,
       sourceId: c.sourceId,
       sourceKind: c.sourceKind,
       targetId: c.targetId,
@@ -166,13 +185,15 @@ export function assignJob(
       personalFoodPlan: c.personalFoodPlan || (c.kind === 'cook' && pawn.hunger < 38),
       cookTransactionId: c.kind === 'cook' ? `${pawn.id}:${c.targetId}:${w.tick}` : undefined,
       postedJobId: c.postId,
+      personalHousingPlan: c.personalHousingPlan,
     };
     claimJobPost(w, c.postId, pawn.id);
+    if (c.kind === 'relax') pawn.psychology.nextCopingAt = w.tick + COPING_COOLDOWN;
     if (c.kind === 'cook') {
       const station = w.buildings.find((b) => b.id === c.targetId);
       if (station) station.reservedBy = pawn.id;
     }
-    if (!c.work)
+    if (!c.work && c.kind !== 'relax')
       diagnostics?.record(w, 'FOOD_SELFCARE_EVALUATED', {
         entityId: pawn.id,
         values: {

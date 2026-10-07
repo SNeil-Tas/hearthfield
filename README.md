@@ -12,6 +12,10 @@ Rabbits, deer, wild boars, bison, foxes, and wolves form a wilderness ecology. A
 
 Colonists also form directed relationships through periodic encounters while they are near one another. Familiarity and opinion can develop into friendship, close friendship, or rivalry; established bonds contribute a bounded social effect to mood and appear in each colonist's inspector.
 
+Each colonist now has a persistent psychological profile: sociability, resilience, diligence, curiosity, sensitivity, empathy, and a preferred kind of work. Belonging, recreation, privacy, purpose, security, and comfort respond to their surroundings and daily activities. Different personalities weigh those needs differently; sustained strain builds stress, slows work, and takes time to recover from. Colonists can seek company, recreation, or quiet space between jobs, while food, rest, and child care keep priority. Children receive emotional support from nearby adult care.
+
+Meals, sleeping conditions, satisfying work, conversations, injuries, milestones, partnerships, births, and bereavement leave bounded memories that fade instead of accumulating permanent mood modifiers. Tap a colonist and read **Inner life** for their personality, unmet needs, stress, emotional mood contribution, and recent memories. Save version 11 preserves this state and migrates versions 1–10 with deterministic profiles.
+
 ![Landscape prototype](docs/mobile-colony.png)
 
 ## Run locally
@@ -62,6 +66,7 @@ Saves belong to the **browser profile and origin**, including port. A LAN addres
 - A selected colonist's Relationships section shows how well they know each settler and their current opinion. Relationships develop autonomously when colonists spend time near one another.
 - Tap a wild animal to inspect its species, age, health, energy, current behaviour, and any target it is tracking. **More → Wildlife** summarizes all six populations and warns about predator encounters.
 - **Work:** tap a priority to cycle **1 → 2 → 3 → 4 → off**. Skill is shown below. The shared board lists work noticed and posted by busy colonists, including its current claimant. Eating and resting override normal work.
+- Adults notice missing household shelter and beds every 30 simulated seconds, including beds for their children. They claim spare indoor beds, add beds to existing rooms, or design and build a home. Both Build skill and Building knowledge determine whether they can design a simple shelter, cottage, or two-room home. Colonists request design help when they cannot plan a home themselves, and post timber, delivery, and building work for others. Personal housing work takes precedence over ordinary work while still respecting disabled work types; food, rest, and childcare come first. The inspector shows housing progress and the Work screen shows Building knowledge.
 - **Orders → Cancel plans:** remove tree orders, unfinished blueprints, or stockpile cells. Delivered and carried materials are retained. Completed structures can be deconstructed from their context panel.
 - Use **pause / 1× / 2× / 4×** freely. Management screens do not automatically pause the colony.
 - Follow the **Next step** card for a gentle settlement arc. Tap it to see the full colony-goal roadmap; goals never expire and completed milestones persist in the save.
@@ -75,6 +80,8 @@ Resource totals count items on the ground plus carried items. The player-facing 
 Desktop shortcuts: **Space** toggles pause; **Escape** closes a panel/tool/selection; **F** focuses the settlement; **D** toggles diagnostics. Buttons remain usable without shortcuts or hover.
 
 ## Saving and offline behavior
+
+Autonomous housing uses save schema 10. Older saves gain Building knowledge from each colonist's existing Build skill and begin with no housing projects. Projects, design progress, assigned beds, and delivered wood survive saves. Up to three households plan at once; children get priority. Cancelling a housing blueprint defers that household's next new plan for one game day while leaving other plans and physical materials in place.
 
 - Resume the newest valid local save automatically.
 - IndexedDB autosave every **15 real seconds**, plus saves after map orders, explicit Save, and visibility/page-hide events.

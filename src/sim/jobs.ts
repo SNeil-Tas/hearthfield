@@ -39,7 +39,10 @@ import {
 import { COOKED_MEAL_POINTS, COOKING_INPUT } from './definitions';
 import { DiagnosticLog, point } from './diagnostics';
 import { agingMovementMultiplier, isAdult } from './health';
-import { childShelter } from './family';
+import { childShelter, childNeedsBed } from './family';
+import { finishHousingDesign, housingDesignFor, HOUSING_DESIGN_WORK } from './housing';
+import { remember, workTypeForJob } from './psychology';
+import { advancePsychologicalCare } from './psychology-care';
 
 export function interruptJob(
   w: World,
@@ -95,6 +98,11 @@ export function advanceJob(
   const job = pawn.job;
   if (!job) return false;
   const finish = () => {
+    if (workTypeForJob(job.kind)) {
+      pawn.psychology.needs.purpose = Math.min(100, pawn.psychology.needs.purpose + 2);
+      if (workTypeForJob(job.kind) === pawn.psychology.preferredWork)
+        remember(w, pawn, 'achievement', 'Made progress doing work I enjoy', 3);
+    }
     diagnostics?.record(w, 'JOB_COMPLETED', {
       entityId: pawn.id,
       entityName: pawn.name,
@@ -117,11 +125,14 @@ export function advanceJob(
   const bp = w.blueprints.find((b) => b.id === job.targetId);
   const crop = w.crops.find((c) => c.id === job.targetId);
   const building = w.buildings.find((b) => b.id === job.targetId);
+  const housing =
+    job.kind === 'design' ? w.housingProjects.find((p) => p.id === job.targetId) : undefined;
   const soil = agricultureAt(w, job.destination);
   const weatherWork = ['chop', 'gather', 'harvest', 'sow', 'water', 'fertilize'].includes(job.kind)
     ? exposedFieldWorkMultiplier(w, pawn)
     : 1;
   if (
+    (job.kind === 'design' && (!housing || housing.design || !housingDesignFor(pawn))) ||
     (['build', 'deliver'].includes(job.kind) && !bp) ||
     (['chop', 'gather'].includes(job.kind) && !node) ||
     (job.kind === 'harvest' && !crop) ||
@@ -406,8 +417,8 @@ export function advanceJob(
       }
       child.care = Math.min(100, child.care + 50);
       child.caregiverId = pawn.id;
-      if (!roomTopology(w).isIndoors(child)) {
-        const shelter = childShelter(w, pawn, grid);
+      if (!roomTopology(w).isIndoors(child) || childNeedsBed(w, child)) {
+        const shelter = childShelter(w, child, grid, pawn);
         if (shelter) {
           job.destination = shelter.destination;
           job.path = shelter.path;
@@ -420,6 +431,16 @@ export function advanceJob(
       finish();
       break;
     }
+    case 'design':
+      if (!housing) break;
+      housing.designWork +=
+        TICK_SECONDS * (1 + pawn.knowledge.building * 0.06) * (pawn.productivity ?? 1);
+      if (housing.designWork >= HOUSING_DESIGN_WORK) {
+        finishHousingDesign(w, housing, pawn, grid);
+        finish();
+        return true;
+      }
+      break;
     case 'move':
       finish();
       break;
@@ -658,7 +679,17 @@ export function advanceJob(
       bp.work += TICK_SECONDS * (1 + pawn.skills.build * 0.06) * (pawn.productivity ?? 1);
       if (bp.work >= BUILDINGS[bp.kind].work) {
         if (BUILDINGS[bp.kind].blocks && w.pawns.some((p) => sameTile(p, bp))) break;
-        w.buildings.push({ id: nextId(w, 'building'), x: bp.x, y: bp.y, kind: bp.kind });
+        if (bp.kind === 'bed' && bp.ownerId)
+          for (const oldBed of w.buildings)
+            if (oldBed.kind === 'bed' && oldBed.ownerId === bp.ownerId) oldBed.ownerId = undefined;
+        w.buildings.push({
+          id: nextId(w, 'building'),
+          x: bp.x,
+          y: bp.y,
+          kind: bp.kind,
+          ownerId: bp.ownerId,
+          housingProjectId: bp.housingProjectId,
+        });
         w.blueprints = w.blueprints.filter((b) => b.id !== bp.id);
         if (isRoomBoundary(bp.kind)) roomTopology(w).invalidate(`completed ${bp.kind}`);
         emit(w, `${pawn.name} completed a ${BUILDINGS[bp.kind].label.toLowerCase()}.`, 'success');
@@ -992,7 +1023,13 @@ export function advanceJob(
                 ? 65
                 : 35),
         );
-        pawn.moodBias = (pawn.moodBias ?? 0) + (foodType(food) === 'meal' ? 2 : -3);
+        remember(
+          w,
+          pawn,
+          'meal',
+          foodType(food) === 'meal' ? 'A satisfying cooked meal' : 'Had to make do with raw food',
+          foodType(food) === 'meal' ? 3 : -3,
+        );
         emit(w, `${pawn.name} stopped for a meal.`);
         diagnostics?.record(w, 'FOOD_CONSUMED', {
           entityId: pawn.id,
@@ -1017,9 +1054,9 @@ export function advanceJob(
       if (bed && job.progress === TICK_SECONDS) {
         if (!bed.ownerId) bed.ownerId = pawn.id;
         else if (bed.ownerId !== pawn.id) {
-          pawn.moodBias = (pawn.moodBias ?? 0) - 3;
+          remember(w, pawn, 'borrowed-bed', 'Slept in someone else’s bed', -3);
           const owner = w.pawns.find((p) => p.id === bed.ownerId);
-          if (owner) owner.moodBias = (owner.moodBias ?? 0) - 2;
+          if (owner) remember(w, owner, 'bed-used', 'Someone used my bed', -2);
         }
       }
       const own = !!bed && bed.ownerId === pawn.id;
@@ -1027,7 +1064,27 @@ export function advanceJob(
         100,
         pawn.rest + TICK_SECONDS * (bed ? (own ? 5.2 : 4.2) * (shelteredBed ? 1 : 0.85) : 1.3),
       );
-      if (pawn.rest >= 95 || pawn.hunger < 18) finish();
+      if (pawn.rest >= 95 || pawn.hunger < 18) {
+        if (pawn.rest >= 95)
+          remember(
+            w,
+            pawn,
+            'sleep',
+            shelteredBed
+              ? 'Rested in a sheltered bed'
+              : bed
+                ? 'Slept in an exposed bed'
+                : 'Slept on the ground',
+            shelteredBed ? 4 : bed ? -1 : -3,
+          );
+        finish();
+      }
+      break;
+    }
+    case 'relax': {
+      const result = advancePsychologicalCare(w, pawn);
+      if (result === 'complete') finish();
+      else if (result === 'cancel') cancel('personal break no longer suitable');
       break;
     }
   }

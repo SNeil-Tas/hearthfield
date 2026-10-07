@@ -7,6 +7,7 @@ import { initializeWildForage, seedWildlife } from './ecology';
 import { generateLandscape, populateNaturalResources } from './landscape';
 import { MAX_LIFESPAN, MIN_LIFESPAN, YEAR_TICKS } from './health';
 import { DEFAULT_AGING_ONSET } from './health';
+import { createPsychology } from './psychology';
 export { randomFrom } from './random';
 export function generateWorld(seed = Date.now() >>> 0): World {
   const random = randomFrom(seed);
@@ -33,6 +34,7 @@ export function generateWorld(seed = Date.now() >>> 0): World {
     pawns: [],
     events: [],
     jobPosts: [],
+    housingProjects: [],
     completedGoals: [],
     weather: 'clear',
     weatherStartedAt: 0,
@@ -75,36 +77,48 @@ export function generateWorld(seed = Date.now() >>> 0): World {
     'Leo',
     'Hazel',
     'Remy',
-  ].map((name, i) => ({
-    id: nextId(w, 'pawn'),
-    name,
-    x: 36 + (i % 5) * 2,
-    y: 37 + Math.floor(i / 5) * 2,
-    color: colors[i % colors.length]!,
-    health: 100,
-    ageTicks: (20 + Math.floor(random() * 21)) * YEAR_TICKS,
-    lifespanYears: MIN_LIFESPAN + Math.floor(random() * (MAX_LIFESPAN - MIN_LIFESPAN + 1)),
-    sex: i % 2 === 0 ? 'male' : 'female',
-    orientation: i % 10 === 8 ? 'homosexual' : i % 10 === 9 ? 'bisexual' : 'heterosexual',
-    agingOnsetYears: DEFAULT_AGING_ONSET,
-    parentIds: [],
-    ancestorIds: [],
-    nextConceptionAt: 0,
-    care: 100,
-    injuries: [],
-    relationships: [],
-    hunger: 83 - (i % 3) * 9,
-    rest: 88 - (i % 3) * 7,
-    mood: 85,
-    skills: { plants: i === 0 ? 7 : 3, build: i === 1 ? 8 : 3, haul: i === 2 ? 6 : 3, cook: 3 },
-    knowledge: { agriculture: i === 0 ? 16 : i === 1 ? 3 : 8 },
-    priorities: { plants: i === 0 ? 1 : 3, build: i === 1 ? 1 : 3, haul: i === 2 ? 1 : 2, cook: 2 },
-    job: null,
-    carrying: null,
-    moodBias: 0,
-    productivity: 1,
-    wetness: 0,
-  }));
+  ].map((name, i) => {
+    const id = nextId(w, 'pawn');
+    return {
+      id,
+      name,
+      x: 36 + (i % 5) * 2,
+      y: 37 + Math.floor(i / 5) * 2,
+      color: colors[i % colors.length]!,
+      health: 100,
+      ageTicks: (20 + Math.floor(random() * 21)) * YEAR_TICKS,
+      lifespanYears: MIN_LIFESPAN + Math.floor(random() * (MAX_LIFESPAN - MIN_LIFESPAN + 1)),
+      sex: i % 2 === 0 ? 'male' : 'female',
+      orientation: i % 10 === 8 ? 'homosexual' : i % 10 === 9 ? 'bisexual' : 'heterosexual',
+      agingOnsetYears: DEFAULT_AGING_ONSET,
+      parentIds: [],
+      ancestorIds: [],
+      nextConceptionAt: 0,
+      care: 100,
+      injuries: [],
+      relationships: [],
+      hunger: 83 - (i % 3) * 9,
+      rest: 88 - (i % 3) * 7,
+      mood: 85,
+      psychology: createPsychology(seed, id),
+      skills: { plants: i === 0 ? 7 : 3, build: i === 1 ? 8 : 3, haul: i === 2 ? 6 : 3, cook: 3 },
+      knowledge: {
+        agriculture: i === 0 ? 16 : i === 1 ? 3 : 8,
+        building: i === 1 ? 16 : i === 0 ? 3 : 8,
+      },
+      priorities: {
+        plants: i === 0 ? 1 : 3,
+        build: i === 1 ? 1 : 3,
+        haul: i === 2 ? 1 : 2,
+        cook: 2,
+      },
+      job: null,
+      carrying: null,
+      moodBias: 0,
+      productivity: 1,
+      wetness: 0,
+    };
+  });
   for (let y = 42; y <= 44; y++) for (let x = 38; x <= 42; x++) w.stockpiles.push(y * w.width + x);
   drop(w, { x: 39, y: 42 }, 'food', 240);
   drop(w, { x: 41, y: 42 }, 'wood', 18);

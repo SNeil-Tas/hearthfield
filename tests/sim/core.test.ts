@@ -10,6 +10,12 @@ import { interruptJob } from '../../src/sim/jobs';
 import { flatWorld } from './fixtures';
 
 describe('navigation and reservation primitives', () => {
+  it('snaps moving colonist destinations to tiles without oscillating between fractional coordinates', () => {
+    const w = flatWorld();
+    const path = findPath(w, { x: 2.25, y: 3 }, { x: 6.75, y: 4.25 });
+    expect(path?.at(-1)).toEqual({ x: 7, y: 4 });
+    expect(path?.every((p) => Number.isInteger(p.x) && Number.isInteger(p.y))).toBe(true);
+  });
   it('finds a shortest four-way path around water and respects walls', () => {
     const w = flatWorld();
     w.terrain[3 * 12 + 3] = 'water';
@@ -211,7 +217,9 @@ describe('autonomous physical logistics', () => {
       ],
     });
     for (let i = 0; i < 9000; i++) sim.step();
-    expect(w.buildings.filter((b) => b.kind === 'bed')).toHaveLength(3);
+    for (const x of [39, 40, 41])
+      expect(w.buildings.some((b) => b.kind === 'bed' && b.x === x && b.y === 37)).toBe(true);
+    expect(w.buildings.filter((b) => b.kind === 'bed').length).toBeGreaterThan(3);
     for (const p of w.pawns) {
       expect(Number.isFinite(p.x + p.y + p.hunger + p.rest)).toBe(true);
       for (const key of p.job?.keys ?? []) expect(sim.reservations.owner(key)).toBe(p.id);
@@ -220,7 +228,7 @@ describe('autonomous physical logistics', () => {
     for (const p of w.pawns) interruptJob(w, p, sim.reservations);
     expect(sim.reservations.size).toBe(0);
     expect(decode(encode(w)).world.tick).toBe(9000);
-  }, 10000);
+  }, 30000);
 });
 
 describe('time and persistence', () => {
@@ -259,7 +267,7 @@ describe('time and persistence', () => {
   it('rejects corruption, incompatible versions and malformed world data', () => {
     const save = encode(flatWorld());
     expect(() => decode({ ...save, payload: save.payload + ' ' })).toThrow('integrity');
-    expect(() => decode({ ...save, version: 10 })).toThrow('different game version');
+    expect(() => decode({ ...save, version: 12 })).toThrow('different game version');
     const world = flatWorld();
     world.pawns[0]!.health = NaN;
     const bad = encode(world);

@@ -120,6 +120,8 @@
 
 ## Partial systems and known limitations
 
+- **Household initiative:** adults recognize missing household shelter and children's beds, claim spare indoor beds, furnish rooms, or design homes according to Building knowledge and Build skill. They post design, timber, delivery and construction help, and use physical materials and existing work reservations. The inspector shows housing progress; Work shows Building knowledge and housing requests. Children use reserved beds through adult care. Schema 10 preserves projects and ownership and migrates older saves. Three projects can run at once; new sites require clear footprints and circulation space, with periodic retries when space is unavailable.
+
 - **Survival/content:** finite wild food/trees plus one renewable grain crop and automatic simple meals. Starvation, injuries and old age can kill colonists. There is no incapacitation, rescue, treatment, recruitment, or replacement population yet. Mood is derived, with no mental breaks or memories. Skills are static.
 - **Construction:** one-tile buildings, wood only, physical deconstruction, and simple enclosed-tile shelter recognition; no rotation or roof simulation. Doors are passable visual structures, without door timing or hold-open state. Large sealed plans can become unreachable; no reachability warning explains them yet. Leave doorways and cancel unfinished obstructing plans.
 - **Logistics:** resource-specific carrying (food 100, spoiled food 30, wood 12, stone 12), compatible stockpile merging, throughput-ranked cooking sources, and low-priority partial-stack consolidation. Large quantities of separate stacks/blueprints still need profiling and indexing work.

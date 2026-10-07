@@ -26,6 +26,7 @@ Simulation modules have no browser, renderer or DOM dependencies. Rendering read
 | Execution            | `src/sim/jobs.ts`                                | Travel, carrying, harvest/work progress, delivery, consumption, completion                |
 | Needs                | `src/sim/needs.ts`                               | Hunger, rest, health effects, derived mood and interruption                               |
 | Relationships        | `src/sim/relationships.ts`                       | Directed opinions, familiarity, nearby encounters and social mood effects                 |
+| Psychology           | `src/sim/psychology.ts`, `psychology-care.ts`     | Persistent traits, emotional needs, stress, fading memories and optional personal care    |
 | Colonist health      | `src/sim/health.ts`                              | Aging, occupational/predator injuries, healing, impairment, lifespan and death            |
 | Reservations         | `src/sim/reservations.ts`                        | Atomic multi-key claims and owner-wide release                                            |
 | Navigation           | `src/sim/pathfinding.ts`                         | Four-way A*, binary heap, isolated walkability grid including loose item occupancy        |
@@ -82,7 +83,7 @@ DOM panels use safe-area insets and 44 px action targets. Work/settings/journal 
 
 ## Persistence and migration
 
-Save envelope version **8** contains a millisecond timestamp, JSON payload and FNV integrity checksum. The checksum detects accidental corruption; it is not an authentication mechanism. World validation rejects unknown definitions, invalid quantities/coordinates/needs, duplicate identities and invalid ID sequences before state reaches gameplay.
+Save envelope version **10** contains a millisecond timestamp, JSON payload and FNV integrity checksum. The checksum detects accidental corruption; it is not an authentication mechanism. World validation rejects unknown definitions, invalid quantities/coordinates/needs, duplicate identities and invalid ID sequences before state reaches gameplay.
 
 IndexedDB database `hearthfield`, schema 1, contains `saves/latest` and `saves/backup`. Both writes occur in one transaction; queued snapshots preserve local write ordering. Page hide also writes a best-effort synchronous recovery envelope to localStorage. Resume validates all candidates and picks the newest valid timestamp. Complete read failure never silently overwrites the original data.
 
@@ -93,6 +94,14 @@ Web Locks hold an exclusive writer for the page lifetime where supported; a comp
 Production builds generate a service worker with exact hashed asset filenames. The worker serves immutable assets from the precache, uses network-first navigation with the cached shell as an offline fallback, and scopes cleanup to this app's caches. A waiting worker responds to an explicit `SKIP_WAITING` message; the page offers Reload and performs one guarded reload on `controllerchange`. Static asset matches ignore `Vary` because module and precache requests differ in Origin headers, although the same-origin immutable file contents do not. A real Chromium offline reload verifies this path.
 
 The static deployment remains a Vite build published by GitHub Pages. `index.html`, the manifest, service-worker registration, and generated asset references use relative paths so a project-page subpath works without changing simulation or persistence code. Each production build emits a fresh worker cache name; registration requests an update, while the worker waits for old tabs to close before claiming the next launch.
+
+## Household housing initiative
+
+Household housing is managed by `src/sim/housing.ts`. Every 300 ticks, adults check their own, partners', and dependent children's shelter and bed needs; caregivers or another adult take responsibility for orphans. Spare reachable indoor beds (including player-planned beds in planned enclosures) are claimed first. Up to three projects run at once, each covering up to eight unhoused people, with families considered first. Personal housing precedes ordinary work after food, rest, and childcare; disabled work preferences still apply.
+
+A persistent design job creates ordinary blueprints. The lower of Building knowledge and Build skill determines complexity: 2–5 yields a compact shelter, 6–11 a cottage, and 12–20 a two-room home. Colonists below 2 request design help. Existing rooms are furnished first. New sites need a clear footprint, a one-tile circulation perimeter, and a reachable doorway; larger designs can fall back to smaller ones. Unsuccessful site searches retry after 120 simulated seconds. Four pieces per project are offered for construction at a time.
+
+Timber demand budgets undelivered wood against reachable loose, carried and designated timber, then creates real tree-cutting orders for shortages. Household requests for design, timber, delivery and construction use the existing job board and reservations. Bed blueprints retain their intended owners through completion; adult care escorts tired children to their own sheltered beds. Schema 10 preserves projects, design progress, Building knowledge and ownership. Cancelling a housing blueprint detaches its project, retains other physical plans/materials, and defers that household's next initiative for one game day. Skills and knowledge remain static; shelter uses the existing automatic roof system.
 
 ## Survival loop additions
 
@@ -106,7 +115,7 @@ Rooms and roofs are derived runtime state owned by `roomTopology(world)`. Comple
 
 Weather/exposure is centralised in `src/sim/weather.ts`: seeded weighted Clear/Rain/Heavy rain/Storm periods, roof-authoritative rain exposure, and persistent pawn wetness updated once per second. Existing rain food/field-work effects use its queries; wetness contributes a small mood effect. See [weather](docs/weather.md) for rates, transitions, save defaults and limits.
 
-Save envelopes are version 8. Loading versions 1–7 adds safe agriculture, weather, food-expiry, mood/productivity, food-point, Dump-zone, Knowledge, freshwater, clean-soil and relationship defaults before normal validation. Missing wetness defaults to dry and missing weather start time defaults to load tick. Job state remains ephemeral across loading, so reservations and carried ingredients are reconstructed safely.
+Save envelopes are version 10. Loading older versions adds safe agriculture, weather, food-expiry, mood/productivity, food-point, Dump-zone, Knowledge, freshwater, clean-soil, relationship, family, and housing defaults before normal validation. Building knowledge defaults to the existing Build skill in saves through version 9. Missing wetness defaults to dry and missing weather start time defaults to load tick. Job state remains ephemeral across loading, so reservations and carried ingredients are reconstructed safely.
 
 Raw food items retain a physical stack with fractional `freshPoints` and `spoiledPoints`; meals remain whole items worth 80 points. Cooking stations own a transient `ingredientFresh` buffer and `cookingProgress` while reserved by one pawn. Interrupted cooking refunds buffered fresh points as physical food. More than 10 spoiled points are separated into expiry-tracked physical `waste` items capped at 30, traversable like other resources. Dump zones are persistent tile designations. Spoilage uses indoor shelter, exposed weather, and a bounded 8-neighbour waste-contamination multiplier.
 

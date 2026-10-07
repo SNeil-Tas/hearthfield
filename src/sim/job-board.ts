@@ -1,5 +1,8 @@
 import { BUILDINGS, COOKING_INPUT } from './definitions';
-import type { Job, Pawn, Point, WaterSourceClass, WorkType, World } from './types';
+import { housingDesignCandidates, housingDesignFor } from './housing';
+import { isAdult } from './health';
+import type { CopingActivity, Job, Pawn, Point, WaterSourceClass, WorkType, World } from './types';
+import { psychologicalWorkPreference } from './psychology';
 import {
   agricultureAt,
   CROPS,
@@ -27,6 +30,9 @@ import {
 } from './world';
 
 export interface Candidate {
+  copingActivity?: CopingActivity;
+  housingProjectId?: string;
+  personalHousingPlan?: boolean;
   kind: Job['kind'];
   sourceId?: string;
   sourceKind?: 'water';
@@ -142,7 +148,16 @@ export function workCandidates(w: World): Candidate[] {
     }
   }
 
+  // Keep a few pieces of each autonomous home available at once. Full plans remain
+  // visible and budgeted, without multiplying every timber stack by an entire house.
+  const housingPieces = new Map<string, number>();
+  const activeTargets = new Set(w.pawns.map((p) => p.job?.targetId));
   for (const bp of w.blueprints) {
+    if (bp.housingProjectId) {
+      const count = housingPieces.get(bp.housingProjectId) ?? 0;
+      housingPieces.set(bp.housingProjectId, count + 1);
+      if (count >= 4 && !activeTargets.has(bp.id)) continue;
+    }
     if (bp.delivered >= BUILDINGS[bp.kind].cost)
       candidates.push({
         kind: 'build',
@@ -316,7 +331,17 @@ export function workCandidates(w: World): Candidate[] {
         work: 'haul',
         score: 50,
       });
-  return candidates;
+  const housingTargets = new Map([
+    ...w.blueprints
+      .filter((b) => b.housingProjectId)
+      .map((b) => [b.id, b.housingProjectId!] as const),
+    ...w.housingProjects.flatMap((p) => p.timberIds.map((id) => [id, p.id] as const)),
+  ]);
+  return [...candidates, ...housingDesignCandidates(w)].map((candidate) => {
+    const housingProjectId =
+      candidate.housingProjectId ?? housingTargets.get(candidate.targetId ?? '');
+    return housingProjectId ? { ...candidate, housingProjectId } : candidate;
+  });
 }
 
 export function needCandidates(w: World, pawn: Pawn): Candidate[] {
@@ -369,7 +394,11 @@ export function needCandidates(w: World, pawn: Pawn): Candidate[] {
         });
   if (pawn.rest < 28 && pawn.hunger > 12) {
     for (const bed of w.buildings)
-      if (bed.kind === 'bed')
+      if (
+        bed.kind === 'bed' &&
+        !bed.deconstructing &&
+        !w.pawns.some((p) => p.id === bed.ownerId && !isAdult(p))
+      )
         candidates.push({
           kind: 'sleep',
           targetId: bed.id,
@@ -431,10 +460,12 @@ export function rankCandidate(pawn: Pawn, candidate: Candidate) {
     : priority * 100 +
         distance(pawn, resolved.source ?? resolved.destination) +
         resolved.score -
-        pawn.skills[resolved.work] * 2;
+        pawn.skills[resolved.work] * 2 -
+        psychologicalWorkPreference(pawn, resolved.work);
 }
 
 export function resolveCandidateForPawn(pawn: Pawn, candidate: Candidate): Candidate | null {
+  if (candidate.kind === 'design' && !housingDesignFor(pawn)) return null;
   if (candidate.kind !== 'water' || !candidate.irrigationSources) return candidate;
   const evaluation = candidate.irrigationSources.map((source) => ({
     source,

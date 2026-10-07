@@ -4,6 +4,7 @@ import { CROPS, ensureAgricultureTile } from './agriculture';
 import type { Command, World } from './types';
 import { drop, inside, nextId, sameTile, tileKey, walkable } from './world';
 import { Reservations } from './reservations';
+import { abandonHousingProject } from './housing';
 
 function connectedGrowingZone(w: World, origin: number) {
   const zones = new Set(w.growingZones);
@@ -113,6 +114,7 @@ export function applyCommand(w: World, command: Command, reservations: Reservati
             if (pawn.job) interruptJob(w, pawn, reservations);
           }
         if (bp) {
+          if (bp.housingProjectId) abandonHousingProject(w, bp.housingProjectId);
           drop(w, bp, 'wood', bp.delivered);
           w.blueprints = w.blueprints.filter((b) => b.id !== bp.id);
           changed++;
